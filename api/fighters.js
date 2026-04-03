@@ -13,6 +13,7 @@ function makePool() {
 }
 
 module.exports = async function handler(req, res) {
+  // v2 - inline pool
   const pool = makePool();
   try {
     // Ensure table exists

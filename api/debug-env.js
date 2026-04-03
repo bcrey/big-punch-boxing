@@ -1,12 +1,35 @@
+const { Pool } = require('pg');
+
 module.exports = async function handler(req, res) {
-  res.status(200).json({
-    DB_USER: process.env.DB_USER ? process.env.DB_USER.slice(0, 10) + '...' : 'NOT SET',
-    DB_PASSWORD: process.env.DB_PASSWORD ? '***set***' : 'NOT SET',
-    DB_HOST: process.env.DB_HOST ? process.env.DB_HOST.slice(0, 15) + '...' : 'NOT SET',
-    DB_PORT: process.env.DB_PORT || 'NOT SET',
-    DB_NAME: process.env.DB_NAME || 'NOT SET',
-    DATABASE_URL: process.env.DATABASE_URL ? 'SET (legacy)' : 'NOT SET',
-    PGUSER: process.env.PGUSER || 'NOT SET',
-    PGPASSWORD: process.env.PGPASSWORD ? '***set***' : 'NOT SET',
-  });
+  const config = {
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    host: process.env.DB_HOST,
+    port: parseInt(process.env.DB_PORT || '6543'),
+    database: process.env.DB_NAME || 'postgres',
+    ssl: { rejectUnauthorized: false },
+    max: 1,
+  };
+
+  const info = {
+    configUser: config.user,
+    configHost: config.host,
+    configPort: config.port,
+    configDb: config.database,
+    passwordSet: !!config.password,
+    passwordLength: config.password ? config.password.length : 0,
+  };
+
+  try {
+    const pool = new Pool(config);
+    const result = await pool.query('SELECT current_user, version()');
+    info.connected = true;
+    info.currentUser = result.rows[0].current_user;
+    await pool.end();
+  } catch (err) {
+    info.connected = false;
+    info.error = err.message;
+  }
+
+  res.status(200).json(info);
 };
