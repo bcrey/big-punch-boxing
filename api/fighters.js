@@ -1,8 +1,8 @@
-const pool = require('../lib/db');
+const { getPool } = require('../lib/db');
 
 module.exports = async function handler(req, res) {
   // Ensure table exists
-  await pool.query(`
+  await getPool().query(`
     CREATE TABLE IF NOT EXISTS fighters (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL DEFAULT 'New Fighter',
@@ -15,7 +15,7 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'GET') {
     try {
-      const result = await pool.query(
+      const result = await getPool().query(
         'SELECT id, name, image_data, crop FROM fighters ORDER BY created_at ASC'
       );
       res.status(200).json(result.rows);
@@ -26,7 +26,7 @@ module.exports = async function handler(req, res) {
   } else if (req.method === 'POST') {
     try {
       const { id, name, imageData, crop } = req.body;
-      await pool.query(
+      await getPool().query(
         `INSERT INTO fighters (id, name, image_data, crop)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (id) DO UPDATE SET

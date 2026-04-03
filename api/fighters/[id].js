@@ -1,4 +1,4 @@
-const pool = require('../../lib/db');
+const { getPool } = require('../../lib/db');
 
 module.exports = async function handler(req, res) {
   const { id } = req.query;
@@ -6,7 +6,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'PUT') {
     try {
       const { name, imageData, crop } = req.body;
-      await pool.query(
+      await getPool().query(
         `UPDATE fighters SET name = $1, image_data = $2, crop = $3, updated_at = NOW() WHERE id = $4`,
         [name || 'New Fighter', imageData || null, crop ? JSON.stringify(crop) : null, id]
       );
@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
     }
   } else if (req.method === 'DELETE') {
     try {
-      await pool.query('DELETE FROM fighters WHERE id = $1', [id]);
+      await getPool().query('DELETE FROM fighters WHERE id = $1', [id]);
       res.status(200).json({ ok: true });
     } catch (err) {
       console.error('DELETE error:', err);
