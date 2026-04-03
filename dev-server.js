@@ -6,6 +6,7 @@ const url = require('url');
 
 const fightersHandler = require('./api/fighters');
 const fighterByIdHandler = require('./api/fighters/[id]');
+const adminHandler = require('./api/admin');
 
 const MIME = {
   '.html': 'text/html',
@@ -37,6 +38,9 @@ const server = http.createServer(async (req, res) => {
   };
 
   // API routes
+  if (pathname === '/api/admin') {
+    return adminHandler(req, res);
+  }
   if (pathname === '/api/fighters') {
     return fightersHandler(req, res);
   }
