@@ -1,0 +1,2414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Face-Off Boxing!</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Impact', 'Arial Black', sans-serif;
+    overflow: hidden;
+    user-select: none;
+  }
+  #gameContainer {
+    position: relative;
+    width: 900px;
+    height: 600px;
+  }
+  canvas {
+    display: block;
+    border-radius: 12px;
+    box-shadow: 0 0 40px rgba(255, 50, 50, 0.3), 0 0 80px rgba(50, 50, 255, 0.2);
+  }
+  #ui {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px 20px;
+    pointer-events: none;
+  }
+  .health-container {
+    width: 300px;
+  }
+  .player-name {
+    color: #fff;
+    font-size: 18px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+    margin-bottom: 4px;
+  }
+  .health-bar-bg {
+    width: 100%;
+    height: 24px;
+    background: #333;
+    border-radius: 12px;
+    border: 2px solid #555;
+    overflow: hidden;
+    position: relative;
+  }
+  .health-bar {
+    height: 100%;
+    border-radius: 10px;
+    transition: width 0.3s ease;
+    position: relative;
+  }
+  .health-bar.p1 {
+    background: linear-gradient(180deg, #ff6b6b, #c0392b);
+  }
+  .health-bar.p2 {
+    background: linear-gradient(180deg, #74b9ff, #2980b9);
+  }
+  .health-bar::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 4px; right: 4px;
+    height: 8px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.4), transparent);
+    border-radius: 4px;
+  }
+  #roundDisplay {
+    color: #ffd700;
+    font-size: 22px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+    text-align: center;
+    min-width: 120px;
+  }
+  #controls {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 16px;
+    pointer-events: none;
+  }
+  .control-hint {
+    color: rgba(255,255,255,0.5);
+    font-size: 11px;
+    font-family: 'Arial', sans-serif;
+    font-weight: normal;
+    pointer-events: none;
+  }
+  #overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.85);
+    border-radius: 12px;
+    z-index: 10;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 {
+    font-size: 52px;
+    color: #ffd700;
+    text-shadow: 3px 3px 6px rgba(0,0,0,0.8), 0 0 20px rgba(255,215,0,0.4);
+    margin-bottom: 10px;
+    letter-spacing: 3px;
+  }
+  #overlay h2 {
+    font-size: 24px;
+    color: #fff;
+    margin-bottom: 30px;
+    font-weight: normal;
+    font-family: Arial, sans-serif;
+  }
+  .upload-row {
+    display: flex;
+    gap: 40px;
+    margin-bottom: 30px;
+  }
+  .upload-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .upload-box label {
+    color: #ccc;
+    font-size: 16px;
+    font-family: Arial, sans-serif;
+  }
+  .face-preview {
+    width: 90px;
+    height: 110px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #222;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .face-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .upload-btn {
+    padding: 6px 16px;
+    background: #444;
+    color: #fff;
+    border: 1px solid #666;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: Arial, sans-serif;
+    transition: background 0.2s;
+  }
+  .upload-btn:hover { background: #555; }
+  #startBtn {
+    padding: 16px 60px;
+    font-size: 28px;
+    font-family: 'Impact', 'Arial Black', sans-serif;
+    background: linear-gradient(180deg, #e74c3c, #c0392b);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    box-shadow: 0 4px 15px rgba(231,76,60,0.4);
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+  #startBtn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(231,76,60,0.6);
+  }
+  #startBtn:active { transform: scale(0.98); }
+  #bigText {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 80px;
+    color: #ffd700;
+    text-shadow: 4px 4px 8px rgba(0,0,0,0.9), 0 0 30px rgba(255,215,0,0.5);
+    pointer-events: none;
+    z-index: 5;
+    opacity: 0;
+    transition: none;
+    letter-spacing: 4px;
+  }
+  input[type="file"] { display: none; }
+
+  /* Fighter Manager */
+  #managerOverlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.92);
+    border-radius: 12px;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  #managerOverlay.hidden { display: none; }
+  #managerOverlay h2 {
+    color: #ffd700;
+    font-size: 28px;
+    margin-bottom: 15px;
+    letter-spacing: 2px;
+  }
+  .manager-content {
+    display: flex;
+    gap: 20px;
+    width: 100%;
+    max-width: 860px;
+    flex: 1;
+    min-height: 0;
+  }
+  .roster-panel {
+    width: 240px;
+    background: #222;
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+    max-height: 440px;
+  }
+  .roster-panel h3 {
+    color: #ccc;
+    font-size: 14px;
+    font-family: Arial, sans-serif;
+    font-weight: normal;
+    margin-bottom: 4px;
+  }
+  .roster-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: #333;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    position: relative;
+  }
+  .roster-item:hover { background: #444; }
+  .roster-item.selected { background: #555; outline: 2px solid #ffd700; }
+  .roster-thumb {
+    width: 40px;
+    height: 48px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #111;
+    flex-shrink: 0;
+  }
+  .roster-name {
+    color: #fff;
+    font-size: 14px;
+    font-family: Arial, sans-serif;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .roster-delete {
+    color: #888;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+  }
+  .roster-delete:hover { color: #e74c3c; background: rgba(231,76,60,0.15); }
+  .add-fighter-btn {
+    padding: 8px;
+    background: #2a2a3a;
+    color: #aaa;
+    border: 2px dashed #555;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .add-fighter-btn:hover { background: #333; border-color: #777; color: #fff; }
+  .editor-panel {
+    flex: 1;
+    background: #222;
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+  }
+  .editor-panel.empty-state {
+    justify-content: center;
+    color: #666;
+    font-family: Arial, sans-serif;
+    font-size: 15px;
+  }
+  .editor-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+  }
+  .editor-row label {
+    color: #aaa;
+    font-size: 13px;
+    font-family: Arial, sans-serif;
+    width: 50px;
+    flex-shrink: 0;
+  }
+  .editor-row input[type="text"] {
+    flex: 1;
+    padding: 6px 10px;
+    background: #333;
+    color: #fff;
+    border: 1px solid #555;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: Arial, sans-serif;
+    outline: none;
+  }
+  .editor-row input[type="text"]:focus { border-color: #ffd700; }
+  .crop-area {
+    position: relative;
+    width: 300px;
+    height: 300px;
+    background: #111;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: move;
+  }
+  .crop-area img {
+    position: absolute;
+    pointer-events: none;
+    user-select: none;
+  }
+  .crop-oval {
+    position: absolute;
+    border: 2px solid rgba(255,215,0,0.8);
+    border-radius: 50%;
+    pointer-events: none;
+    box-shadow: 0 0 0 2000px rgba(0,0,0,0.55);
+  }
+  .crop-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .crop-controls label {
+    color: #aaa;
+    font-size: 12px;
+    font-family: Arial, sans-serif;
+  }
+  .crop-controls input[type="range"] {
+    width: 120px;
+    accent-color: #ffd700;
+  }
+  .editor-actions {
+    display: flex;
+    gap: 10px;
+  }
+  .editor-actions button {
+    padding: 6px 18px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: Arial, sans-serif;
+    transition: background 0.15s;
+  }
+  .btn-save { background: #27ae60; color: #fff; }
+  .btn-save:hover { background: #2ecc71; }
+  .btn-upload { background: #444; color: #fff; border: 1px solid #666 !important; }
+  .btn-upload:hover { background: #555; }
+  .manager-bottom {
+    margin-top: 12px;
+  }
+  .manager-bottom button {
+    padding: 10px 40px;
+    font-size: 18px;
+    font-family: 'Impact', 'Arial Black', sans-serif;
+    background: #555;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: background 0.15s;
+  }
+  .manager-bottom button:hover { background: #666; }
+
+  /* Fighter select on main overlay */
+  .fighter-select {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 180px;
+    max-height: 90px;
+    overflow-y: auto;
+    margin-top: 4px;
+  }
+  .fighter-select-item {
+    width: 36px;
+    height: 42px;
+    border-radius: 50%;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.1s;
+    background: #222;
+  }
+  .fighter-select-item:hover { transform: scale(1.15); }
+  .fighter-select-item.active { transform: scale(1.15); }
+  .selected-name {
+    color: #fff;
+    font-size: 13px;
+    font-family: Arial, sans-serif;
+    margin-top: 2px;
+    min-height: 18px;
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas" width="900" height="600"></canvas>
+  <div id="ui">
+    <div class="health-container">
+      <div class="player-name" id="p1Name">Player 1</div>
+      <div class="health-bar-bg"><div class="health-bar p1" id="p1Health" style="width:100%"></div></div>
+    </div>
+    <div id="roundDisplay">ROUND 1</div>
+    <div class="health-container" style="text-align:right">
+      <div class="player-name" id="p2Name">Player 2</div>
+      <div class="health-bar-bg"><div class="health-bar p2" id="p2Health" style="width:100%"></div></div>
+    </div>
+  </div>
+  <div id="controls">
+    <div class="control-hint">P1: A/D move | W block | S lean | F jab | G hold+release uppercut</div>
+    <div class="control-hint">P2: Arrows move | Up block | Down lean | &lt; jab | &gt; hold+release uppercut</div>
+  </div>
+  <div id="bigText"></div>
+  <div id="overlay">
+    <h1>FACE-OFF BOXING!</h1>
+    <h2>Choose your fighters!</h2>
+    <div style="display:flex;gap:20px;align-items:flex-end;margin-bottom:15px">
+      <div class="upload-box">
+        <label id="selectLabel1">Fighter 1</label>
+        <canvas id="previewCanvas1" width="180" height="240" style="border-radius:8px;background:rgba(0,0,0,0.3)"></canvas>
+        <div class="selected-name" id="selName1">-</div>
+        <div class="fighter-select" id="fighterSelect1"></div>
+      </div>
+      <div style="display:flex;align-items:center;color:#666;font-size:42px;font-family:Impact;padding-bottom:100px">VS</div>
+      <div class="upload-box">
+        <label id="selectLabel2">Fighter 2</label>
+        <canvas id="previewCanvas2" width="180" height="240" style="border-radius:8px;background:rgba(0,0,0,0.3)"></canvas>
+        <div class="selected-name" id="selName2">-</div>
+        <div class="fighter-select" id="fighterSelect2"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px">
+      <button id="startBtn">FIGHT!</button>
+      <button style="background:none;border:none;color:#aaa;font-size:15px;font-family:Arial,sans-serif;cursor:pointer;padding:12px 16px;transition:color 0.15s" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#aaa'" onclick="openManager()">&#9881; Manage Fighters</button>
+    </div>
+  </div>
+
+  <div id="managerOverlay" class="hidden">
+    <h2>FIGHTER ROSTER</h2>
+    <div class="manager-content">
+      <div class="roster-panel">
+        <h3>Fighters</h3>
+        <div id="rosterList"></div>
+        <div class="add-fighter-btn" onclick="addNewFighter()">+ Add Fighter</div>
+      </div>
+      <div class="editor-panel empty-state" id="editorPanel">
+        Select a fighter to edit
+      </div>
+    </div>
+    <div class="manager-bottom">
+      <button onclick="closeManager()">Done</button>
+    </div>
+    <input type="file" id="managerUpload" accept="image/*">
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const W = 900, H = 600;
+
+// roundRect polyfill for older browsers
+function rRect(ctx, x, y, w, h, r) {
+  if (typeof r === 'number') r = {tl: r, tr: r, br: r, bl: r};
+  ctx.moveTo(x + r.tl, y);
+  ctx.lineTo(x + w - r.tr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r.tr);
+  ctx.lineTo(x + w, y + h - r.br);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r.br, y + h);
+  ctx.lineTo(x + r.bl, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r.bl);
+  ctx.lineTo(x, y + r.tl);
+  ctx.quadraticCurveTo(x, y, x + r.tl, y);
+}
+
+// Audio context for sound effects
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new AudioCtx();
+}
+
+function playSound(type) {
+  ensureAudio();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  const now = audioCtx.currentTime;
+
+  if (type === 'punch') {
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(200, now);
+    osc.frequency.exponentialRampToValueAtTime(60, now + 0.15);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    osc.start(now);
+    osc.stop(now + 0.15);
+  } else if (type === 'hit') {
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(300, now);
+    osc.frequency.exponentialRampToValueAtTime(50, now + 0.2);
+    gain.gain.setValueAtTime(0.4, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+    osc.start(now);
+    osc.stop(now + 0.2);
+    // Add noise-like burst
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.type = 'sawtooth';
+    osc2.frequency.setValueAtTime(800, now);
+    osc2.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+    gain2.gain.setValueAtTime(0.3, now);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+    osc2.start(now);
+    osc2.stop(now + 0.1);
+  } else if (type === 'ko') {
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(400, now);
+    osc.frequency.exponentialRampToValueAtTime(30, now + 0.8);
+    gain.gain.setValueAtTime(0.5, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+    osc.start(now);
+    osc.stop(now + 0.8);
+  } else if (type === 'bell') {
+    // Play bell.mp3 three times in quick succession, overlapping
+    for (let ring = 0; ring < 3; ring++) {
+      setTimeout(() => {
+        const a = new Audio('bell.mp3');
+        a.volume = 0.7;
+        a.play();
+      }, ring * 300);
+    }
+    // Don't use the original osc
+    gain.gain.setValueAtTime(0, now);
+    osc.start(now);
+    osc.stop(now + 0.01);
+  } else if (type === 'block') {
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(80, now + 0.1);
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  }
+}
+
+// Face detection — finds face region via skin-tone + center-of-mass analysis
+// Returns {sx, sy, sw, sh} as source crop rect in image coordinates
+function detectFaceCrop(img) {
+  const tmpCanvas = document.createElement('canvas');
+  const sz = 150; // analyze at small size for speed
+  const scale = Math.min(sz / img.naturalWidth, sz / img.naturalHeight);
+  const w = Math.round(img.naturalWidth * scale);
+  const h = Math.round(img.naturalHeight * scale);
+  tmpCanvas.width = w;
+  tmpCanvas.height = h;
+  const tc = tmpCanvas.getContext('2d');
+  tc.drawImage(img, 0, 0, w, h);
+  const data = tc.getImageData(0, 0, w, h).data;
+
+  // Score each pixel for skin-tone likelihood
+  let sumX = 0, sumY = 0, totalWeight = 0;
+  let minX = w, minY = h, maxX = 0, maxY = 0;
+  const threshold = 0.3;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const r = data[i], g = data[i+1], b = data[i+2];
+
+      // Skin tone detection across multiple skin tones
+      // Convert to normalized RGB
+      const sum = r + g + b + 1;
+      const rn = r / sum, gn = g / sum;
+
+      // Check various skin-tone ranges (works for light to dark skin)
+      let isSkin = false;
+      // Method 1: RGB ratio based
+      if (r > 60 && g > 40 && b > 20 && r > g && r > b &&
+          (r - g) > 10 && r - b > 15 && Math.abs(r - g) < 130) {
+        isSkin = true;
+      }
+      // Method 2: normalized RGB for darker skin
+      if (rn > 0.35 && rn < 0.52 && gn > 0.25 && gn < 0.40) {
+        isSkin = true;
+      }
+      // Method 3: YCbCr-ish check
+      const y_ = 0.299 * r + 0.587 * g + 0.114 * b;
+      const cb = 128 - 0.169 * r - 0.331 * g + 0.5 * b;
+      const cr = 128 + 0.5 * r - 0.419 * g - 0.081 * b;
+      if (cb > 77 && cb < 127 && cr > 133 && cr < 173 && y_ > 50) {
+        isSkin = true;
+      }
+
+      if (isSkin) {
+        // Weight center pixels more (face is usually centered)
+        const centerBias = 1 + 2 * Math.exp(-((x - w/2)**2 / (w*w/4) + (y - h/2)**2 / (h*h/4)));
+        // Weight upper portion more (face is usually in upper half)
+        const topBias = 1 + Math.max(0, 1 - y / h);
+        const weight = centerBias * topBias;
+        sumX += x * weight;
+        sumY += y * weight;
+        totalWeight += weight;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (totalWeight < 50) {
+    // Not enough skin detected, return center crop
+    const cw = img.naturalWidth * 0.7;
+    const ch = img.naturalHeight * 0.8;
+    return {
+      sx: (img.naturalWidth - cw) / 2,
+      sy: (img.naturalHeight - ch) * 0.3,
+      sw: cw, sh: ch
+    };
+  }
+
+  // Find face center of mass
+  const cx = sumX / totalWeight;
+  const cy = sumY / totalWeight;
+
+  // Use skin bounds to estimate face size, but tighten it
+  const skinW = maxX - minX;
+  const skinH = maxY - minY;
+
+  // Face is roughly the central 70% of the skin blob
+  const faceW = skinW * 0.75;
+  const faceH = skinH * 0.80;
+
+  // Convert back to original image coordinates
+  const invScale = 1 / scale;
+  const faceCX = cx * invScale;
+  const faceCY = cy * invScale;
+  const halfW = (faceW * invScale) / 2;
+  const halfH = (faceH * invScale) / 2;
+
+  // Compute crop rect, add some padding
+  const pad = 0.15;
+  let sx = faceCX - halfW * (1 + pad);
+  let sy = faceCY - halfH * (1 + pad);
+  let sw = halfW * 2 * (1 + pad * 2);
+  let sh = halfH * 2 * (1 + pad * 2);
+
+  // Clamp to image bounds
+  sx = Math.max(0, sx);
+  sy = Math.max(0, sy);
+  sw = Math.min(sw, img.naturalWidth - sx);
+  sh = Math.min(sh, img.naturalHeight - sy);
+
+  return { sx, sy, sw, sh };
+}
+
+// ============ FIGHTER ROSTER SYSTEM ============
+
+// Active game face images
+let face1 = new Image();
+let face2 = new Image();
+let facesLoaded = [false, false];
+let faceCrop1 = null;
+let faceCrop2 = null;
+
+// Roster stored as array of { id, name, imageData (dataURL), crop: {sx,sy,sw,sh} }
+let roster = [];
+let selectedFighter1 = null; // roster id
+let selectedFighter2 = null;
+let editingFighterId = null;
+
+// Crop editor state
+let cropImg = null;       // Image element being cropped
+let cropImgData = null;   // dataURL of uploaded image
+let cropX = 0, cropY = 0; // pan offset
+let cropZoom = 1;
+let cropOvalPct = 70;   // oval width as % of crop area width
+let cropDragging = false;
+let cropDragStart = { x: 0, y: 0 };
+let cropPanStart = { x: 0, y: 0 };
+
+async function loadRoster() {
+  try {
+    const res = await fetch('/api/fighters');
+    if (res.ok) {
+      const rows = await res.json();
+      roster = rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        imageData: r.image_data,
+        crop: r.crop
+      }));
+    }
+  } catch(e) {
+    console.error('Failed to load roster from API:', e);
+    // Fall back to localStorage
+    try {
+      const saved = localStorage.getItem('boxingRoster');
+      if (saved) roster = JSON.parse(saved);
+    } catch(e2) {}
+  }
+}
+
+async function saveRoster() {
+  // No-op: individual saves happen via saveFighterToDb
+}
+
+async function saveFighterToDb(fighter) {
+  try {
+    await fetch('/api/fighters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: fighter.id,
+        name: fighter.name,
+        imageData: fighter.imageData,
+        crop: fighter.crop
+      })
+    });
+  } catch(e) {
+    console.error('Failed to save fighter to DB:', e);
+  }
+}
+
+async function deleteFighterFromDb(id) {
+  try {
+    await fetch('/api/fighters/' + encodeURIComponent(id), { method: 'DELETE' });
+  } catch(e) {
+    console.error('Failed to delete fighter from DB:', e);
+  }
+}
+
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+// Load a fighter's image into an Image element, returns promise
+function loadFighterImage(fighter) {
+  return new Promise((resolve) => {
+    if (!fighter || !fighter.imageData) { resolve(null); return; }
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = fighter.imageData;
+  });
+}
+
+// Select a fighter for player slot (1 or 2)
+async function selectFighter(slot, fighterId) {
+  const fighter = roster.find(f => f.id === fighterId);
+  if (!fighter) return;
+
+  if (slot === 1) {
+    selectedFighter1 = fighterId;
+    const img = await loadFighterImage(fighter);
+    if (img) {
+      face1 = img;
+      facesLoaded[0] = true;
+      faceCrop1 = fighter.crop || detectFaceCrop(img);
+    }
+    document.getElementById('p1Name').textContent = fighter.name;
+    document.getElementById('selName1').textContent = fighter.name;
+    document.getElementById('selectLabel1').textContent = fighter.name;
+  } else {
+    selectedFighter2 = fighterId;
+    const img = await loadFighterImage(fighter);
+    if (img) {
+      face2 = img;
+      facesLoaded[1] = true;
+      faceCrop2 = fighter.crop || detectFaceCrop(img);
+    }
+    document.getElementById('p2Name').textContent = fighter.name;
+    document.getElementById('selName2').textContent = fighter.name;
+    document.getElementById('selectLabel2').textContent = fighter.name;
+  }
+  renderFighterSelects();
+  // Refresh preview boxers with new face
+  if (previewBoxer1) { previewBoxer1.playerNum = 1; }
+  if (previewBoxer2) { previewBoxer2.playerNum = 2; }
+}
+
+function updatePreview(player, img) {
+  const el = document.getElementById('preview' + player);
+  el.innerHTML = '';
+  if (img && img.src) {
+    const crop = player === 1 ? faceCrop1 : faceCrop2;
+    const prevH = 110;
+    const ratio = (crop && crop.ovalRatio) ? crop.ovalRatio : (90/110);
+    const prevW = Math.round(prevH * ratio);
+    const c = document.createElement('canvas');
+    c.width = prevW; c.height = prevH;
+    const tc = c.getContext('2d');
+    const drawIt = () => {
+      if (crop && crop.sw > 0 && crop.sh > 0) {
+        tc.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, prevW, prevH);
+      } else {
+        tc.drawImage(img, 0, 0, prevW, prevH);
+      }
+    };
+    if (img.complete) drawIt();
+    else img.onload = drawIt;
+    c.style.width = '100%';
+    c.style.height = '100%';
+    el.style.width = prevW + 'px';
+    el.style.height = prevH + 'px';
+    el.appendChild(c);
+  }
+}
+
+// Render the small fighter selection thumbnails on the main overlay
+function renderFighterSelects() {
+  [1, 2].forEach(slot => {
+    const container = document.getElementById('fighterSelect' + slot);
+    const selectedId = slot === 1 ? selectedFighter1 : selectedFighter2;
+    container.innerHTML = '';
+    roster.forEach(f => {
+      const item = document.createElement('div');
+      item.className = 'fighter-select-item' + (f.id === selectedId ? ' active' : '');
+      if (f.imageData) {
+        // Draw cropped thumbnail via canvas, respecting oval aspect ratio
+        const thumbH = 42;
+        const ratio = (f.crop && f.crop.ovalRatio) ? f.crop.ovalRatio : (36/42);
+        const thumbW = Math.round(thumbH * ratio);
+        const c = document.createElement('canvas');
+        c.width = thumbW; c.height = thumbH;
+        const tc = c.getContext('2d');
+        const img = new Image();
+        img.onload = () => {
+          const crop = f.crop;
+          if (crop && crop.sw > 0 && crop.sh > 0) {
+            tc.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, thumbW, thumbH);
+          } else {
+            tc.drawImage(img, 0, 0, thumbW, thumbH);
+          }
+        };
+        img.src = f.imageData;
+        c.style.width = '100%';
+        c.style.height = '100%';
+        item.style.width = thumbW + 'px';
+        item.appendChild(c);
+      }
+      item.title = f.name;
+      item.onclick = () => selectFighter(slot, f.id);
+      container.appendChild(item);
+    });
+  });
+}
+
+// ============ FIGHTER MANAGER ============
+
+function openManager() {
+  document.getElementById('managerOverlay').classList.remove('hidden');
+  editingFighterId = null;
+  renderRosterList();
+  renderEditor();
+}
+
+function closeManager() {
+  document.getElementById('managerOverlay').classList.add('hidden');
+  renderFighterSelects();
+  initPreviewBoxers();
+}
+
+function renderRosterList() {
+  const list = document.getElementById('rosterList');
+  list.innerHTML = '';
+  roster.forEach(f => {
+    const item = document.createElement('div');
+    item.className = 'roster-item' + (f.id === editingFighterId ? ' selected' : '');
+
+    // Thumbnail using crop data
+    const thumbDiv = document.createElement('div');
+    thumbDiv.className = 'roster-thumb';
+    if (f.imageData) {
+      const thumbH = 48;
+      const ratio = (f.crop && f.crop.ovalRatio) ? f.crop.ovalRatio : (40/48);
+      const thumbW = Math.round(thumbH * ratio);
+      const c = document.createElement('canvas');
+      c.width = thumbW; c.height = thumbH;
+      const tc = c.getContext('2d');
+      const img = new Image();
+      img.onload = () => {
+        if (f.crop && f.crop.sw > 0 && f.crop.sh > 0) {
+          tc.drawImage(img, f.crop.sx, f.crop.sy, f.crop.sw, f.crop.sh, 0, 0, thumbW, thumbH);
+        } else {
+          tc.drawImage(img, 0, 0, thumbW, thumbH);
+        }
+      };
+      img.src = f.imageData;
+      c.style.width = '100%';
+      c.style.height = '100%';
+      thumbDiv.style.width = thumbW + 'px';
+      thumbDiv.appendChild(c);
+    }
+
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'roster-name';
+    nameDiv.textContent = f.name;
+
+    const delDiv = document.createElement('div');
+    delDiv.className = 'roster-delete';
+    delDiv.innerHTML = '&times;';
+    delDiv.onclick = (e) => { e.stopPropagation(); deleteFighter(f.id); };
+
+    item.appendChild(thumbDiv);
+    item.appendChild(nameDiv);
+    item.appendChild(delDiv);
+    item.onclick = () => { editingFighterId = f.id; renderRosterList(); renderEditor(); };
+    list.appendChild(item);
+  });
+}
+
+function addNewFighter() {
+  const fighter = { id: genId(), name: 'New Fighter', imageData: null, crop: null };
+  roster.push(fighter);
+  saveFighterToDb(fighter);
+  editingFighterId = fighter.id;
+  renderRosterList();
+  renderEditor();
+}
+
+function deleteFighter(id) {
+  roster = roster.filter(f => f.id !== id);
+  if (selectedFighter1 === id) selectedFighter1 = null;
+  if (selectedFighter2 === id) selectedFighter2 = null;
+  if (editingFighterId === id) editingFighterId = null;
+  deleteFighterFromDb(id);
+  renderRosterList();
+  renderEditor();
+  renderFighterSelects();
+}
+
+function renderEditor() {
+  const panel = document.getElementById('editorPanel');
+  const fighter = roster.find(f => f.id === editingFighterId);
+  if (!fighter) {
+    panel.className = 'editor-panel empty-state';
+    panel.innerHTML = 'Select a fighter to edit';
+    return;
+  }
+  panel.className = 'editor-panel';
+
+  panel.innerHTML = `
+    <div class="editor-row">
+      <label>Name</label>
+      <input type="text" id="editorName" value="${fighter.name}" placeholder="Fighter name">
+    </div>
+    <div class="crop-area" id="cropArea">
+      <div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:#555;font-family:Arial,sans-serif;font-size:14px">
+        ${fighter.imageData ? '' : 'Upload an image'}
+      </div>
+    </div>
+    <div class="crop-controls">
+      <label>Zoom</label>
+      <input type="range" id="cropZoomSlider" min="50" max="300" value="100">
+      <label>Width</label>
+      <input type="range" id="cropWidthSlider" min="40" max="120" value="70">
+    </div>
+    <div class="editor-actions">
+      <button class="btn-upload" onclick="document.getElementById('managerUpload').click()">Upload Image</button>
+      <button class="btn-save" onclick="saveFighter()">Save</button>
+    </div>
+  `;
+
+  // Wire up name auto-save
+  document.getElementById('editorName').addEventListener('input', (e) => {
+    fighter.name = e.target.value;
+  });
+
+  // Wire up zoom slider
+  document.getElementById('cropZoomSlider').addEventListener('input', (e) => {
+    cropZoom = e.target.value / 100;
+    drawCropPreview();
+  });
+  document.getElementById('cropWidthSlider').addEventListener('input', (e) => {
+    cropOvalPct = parseInt(e.target.value);
+    drawCropPreview();
+  });
+
+  // If fighter has image, load it into crop editor
+  if (fighter.imageData) {
+    cropImg = new Image();
+    cropImg.onload = () => {
+      cropImgData = fighter.imageData;
+      // Restore saved editor state if available
+      if (fighter.crop && fighter.crop.editorZoom != null) {
+        cropZoom = fighter.crop.editorZoom;
+        cropX = fighter.crop.editorPanX || 0;
+        cropY = fighter.crop.editorPanY || 0;
+        cropOvalPct = fighter.crop.editorOvalPct || 70;
+      } else {
+        cropX = 0; cropY = 0; cropZoom = 1; cropOvalPct = 70;
+      }
+      const slider = document.getElementById('cropZoomSlider');
+      if (slider) slider.value = cropZoom * 100;
+      const wSlider = document.getElementById('cropWidthSlider');
+      if (wSlider) wSlider.value = cropOvalPct;
+      drawCropPreview();
+      setupCropDrag();
+    };
+    cropImg.src = fighter.imageData;
+  } else {
+    cropImg = null;
+    cropImgData = null;
+    cropX = 0; cropY = 0; cropZoom = 1; cropOvalPct = 70;
+  }
+
+  // Wire up upload
+  document.getElementById('managerUpload').onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      cropImgData = ev.target.result;
+      cropImg = new Image();
+      cropImg.onload = () => {
+        cropX = 0; cropY = 0; cropZoom = 1;
+        const slider = document.getElementById('cropZoomSlider');
+        if (slider) slider.value = 100;
+        drawCropPreview();
+        setupCropDrag();
+      };
+      cropImg.src = cropImgData;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+}
+
+function drawCropPreview() {
+  const area = document.getElementById('cropArea');
+  if (!area || !cropImg) return;
+
+  const aw = area.clientWidth || 300;
+  const ah = area.clientHeight || 300;
+
+  // Oval dimensions (what the face will be cropped to)
+  const ovalW = aw * (cropOvalPct / 100);
+  const ovalH = ah * 0.85;
+
+  // Fit image to area, then apply zoom
+  const fitScale = Math.max(ovalW / cropImg.naturalWidth, ovalH / cropImg.naturalHeight);
+  const scale = fitScale * cropZoom;
+  const imgW = cropImg.naturalWidth * scale;
+  const imgH = cropImg.naturalHeight * scale;
+
+  // Center image + pan offset
+  const imgX = (aw - imgW) / 2 + cropX;
+  const imgY = (ah - imgH) / 2 + cropY;
+
+  area.innerHTML = '';
+
+  // Image
+  const imgEl = document.createElement('img');
+  imgEl.src = cropImg.src;
+  imgEl.style.width = imgW + 'px';
+  imgEl.style.height = imgH + 'px';
+  imgEl.style.left = imgX + 'px';
+  imgEl.style.top = imgY + 'px';
+  area.appendChild(imgEl);
+
+  // Oval overlay
+  const oval = document.createElement('div');
+  oval.className = 'crop-oval';
+  oval.style.width = ovalW + 'px';
+  oval.style.height = ovalH + 'px';
+  oval.style.left = ((aw - ovalW) / 2) + 'px';
+  oval.style.top = ((ah - ovalH) / 2) + 'px';
+  area.appendChild(oval);
+}
+
+function setupCropDrag() {
+  const area = document.getElementById('cropArea');
+  if (!area) return;
+
+  area.onmousedown = (e) => {
+    cropDragging = true;
+    cropDragStart = { x: e.clientX, y: e.clientY };
+    cropPanStart = { x: cropX, y: cropY };
+    e.preventDefault();
+  };
+  area.onmousemove = (e) => {
+    if (!cropDragging) return;
+    cropX = cropPanStart.x + (e.clientX - cropDragStart.x);
+    cropY = cropPanStart.y + (e.clientY - cropDragStart.y);
+    drawCropPreview();
+  };
+  area.onmouseup = area.onmouseleave = () => { cropDragging = false; };
+}
+
+function computeCropFromEditor() {
+  // Convert the current pan/zoom to a crop rect in image coordinates
+  if (!cropImg) return null;
+  const area = document.getElementById('cropArea');
+  const aw = area ? area.clientWidth : 300;
+  const ah = area ? area.clientHeight : 300;
+  const ovalW = aw * (cropOvalPct / 100);
+  const ovalH = ah * 0.85;
+  const fitScale = Math.max(ovalW / cropImg.naturalWidth, ovalH / cropImg.naturalHeight);
+  const scale = fitScale * cropZoom;
+
+  // Image position on screen
+  const imgX = (aw - cropImg.naturalWidth * scale) / 2 + cropX;
+  const imgY = (ah - cropImg.naturalHeight * scale) / 2 + cropY;
+
+  // Oval position on screen
+  const ovalX = (aw - ovalW) / 2;
+  const ovalY = (ah - ovalH) / 2;
+
+  // Convert oval rect to image coordinates
+  const sx = (ovalX - imgX) / scale;
+  const sy = (ovalY - imgY) / scale;
+  const sw = ovalW / scale;
+  const sh = ovalH / scale;
+
+  return {
+    sx: Math.max(0, sx),
+    sy: Math.max(0, sy),
+    sw: Math.min(sw, cropImg.naturalWidth - Math.max(0, sx)),
+    sh: Math.min(sh, cropImg.naturalHeight - Math.max(0, sy)),
+    ovalRatio: ovalW / ovalH,  // preserve the oval aspect ratio from the width slider
+    // Editor state for restoring later
+    editorZoom: cropZoom,
+    editorPanX: cropX,
+    editorPanY: cropY,
+    editorOvalPct: cropOvalPct
+  };
+}
+
+function saveFighter() {
+  const fighter = roster.find(f => f.id === editingFighterId);
+  if (!fighter) return;
+  const nameInput = document.getElementById('editorName');
+  if (nameInput) fighter.name = nameInput.value || 'Unnamed';
+  if (cropImgData) {
+    fighter.imageData = cropImgData;
+    fighter.crop = computeCropFromEditor();
+  }
+  saveFighterToDb(fighter);
+  renderRosterList();
+
+  // Update active game faces if this fighter is selected
+  if (selectedFighter1 === fighter.id) selectFighter(1, fighter.id);
+  if (selectedFighter2 === fighter.id) selectFighter(2, fighter.id);
+}
+
+// ============ INIT ROSTER ============
+
+// Seed default fighters from head1.png / head2.png if roster is empty
+async function seedDefaults() {
+  if (roster.length > 0) {
+    renderFighterSelects();
+    if (!selectedFighter1 && roster.length > 0) selectFighter(1, roster[0].id);
+    if (!selectedFighter2 && roster.length > 1) selectFighter(2, roster[1].id);
+    return;
+  }
+  let loaded = 0;
+  const done = () => {
+    loaded++;
+    if (loaded === 2) {
+      // Save each seeded fighter to the database
+      roster.forEach(f => saveFighterToDb(f));
+      renderFighterSelects();
+      selectFighter(1, roster[0].id);
+      if (roster.length > 1) selectFighter(2, roster[1].id);
+    }
+  };
+  ['head1.png', 'head2.png'].forEach((src, idx) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      const dataURL = c.toDataURL('image/jpeg', 0.85);
+      const crop = detectFaceCrop(img);
+      const name = idx === 0 ? 'Fighter 1' : 'Fighter 2';
+      roster.push({ id: genId(), name, imageData: dataURL, crop });
+      done();
+    };
+    img.onerror = () => {
+      roster.push({ id: genId(), name: 'Fighter ' + (idx+1), imageData: null, crop: null });
+      done();
+    };
+    img.src = src;
+  });
+}
+
+// Load from DB then seed if empty
+loadRoster().then(() => seedDefaults());
+
+// Game state
+let gameRunning = false;
+let gameTime = 0;
+let round = 1;
+let roundTimer = 0;
+const ROUND_TIME = 60;
+let shakeX = 0, shakeY = 0;
+let particles = [];
+let bigTextStr = '';
+let bigTextTimer = 0;
+let countdownActive = false;
+let koWinner = 0; // 0 = none, 1 = p1 wins, 2 = p2 wins
+let koTimer = 0;
+let stars = [];
+
+// Generate background stars
+for (let i = 0; i < 50; i++) {
+  stars.push({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    size: Math.random() * 2 + 0.5,
+    twinkle: Math.random() * Math.PI * 2
+  });
+}
+
+class Boxer {
+  constructor(x, facing, color, faceImg, playerNum) {
+    this.startX = x;
+    this.x = x;
+    this.y = 440;
+    this.facing = facing; // 1 = right, -1 = left
+    this.color = color;
+    this.faceImg = faceImg;
+    this.playerNum = playerNum;
+    this.health = 100;
+    this.maxHealth = 100;
+
+    // State
+    this.state = 'idle'; // idle, jab, winding, uppercut, hit, blocking, leaning, ko
+    this.stateTimer = 0;
+    this.bobTimer = Math.random() * Math.PI * 2;
+    this.punchHand = 0; // 0=left, 1=right
+    this.hitDir = 0;
+    this.vx = 0;
+
+    // Animation
+    this.headY = 0;
+    this.headRot = 0;
+    this.bodySquash = 1;
+    this.leadArmExtend = 0;
+    this.rearArmExtend = 0;
+    this.uppercutArmY = 0;
+    this.leanAmount = 0;
+
+    // KO
+    this.koVY = 0;
+    this.koRot = 0;
+    this.koY = 0;
+
+    // Combo
+    this.comboCount = 0;
+    this.comboTimer = 0;
+
+    // Cooldown
+    this.punchCooldown = 0;
+    this.punchLanded = false;
+  }
+
+  reset() {
+    this.x = this.startX;
+    this.y = 440;
+    this.health = 100;
+    this.state = 'idle';
+    this.stateTimer = 0;
+    this.vx = 0;
+    this.koVY = 0;
+    this.koRot = 0;
+    this.koY = 0;
+    this.comboCount = 0;
+    this.comboTimer = 0;
+    this.punchCooldown = 0;
+    this.leadArmExtend = 0;
+    this.rearArmExtend = 0;
+    this.uppercutArmY = 0;
+    this.leanAmount = 0;
+  }
+
+  get bodyX() { return this.x; }
+  get bodyY() { return this.y + Math.sin(this.bobTimer * 0.06) * 3; }
+
+  punch(hand) {
+    if (this.state === 'ko' || this.state === 'hit' || this.punchCooldown > 0) return;
+    if (this.state === 'jab' || this.state === 'uppercut') return;
+    if (hand === 0) {
+      // Jab
+      if (this.state === 'winding') return; // can't jab while winding up
+      this.state = 'jab';
+      this.punchHand = 0;
+      this.stateTimer = 0;
+      this.punchLanded = false;
+      this.punchCooldown = 8;
+      playSound('punch');
+    } else if (hand === 1) {
+      // Start wind-up — hold to keep circling, release to throw
+      if (this.state === 'winding') return;
+      this.state = 'winding';
+      this.stateTimer = 0;
+      this.punchLanded = false;
+    }
+  }
+
+  releaseUppercut() {
+    if (this.state !== 'winding') return;
+    // Must charge for at least 30 frames (~500ms) to throw
+    if (this.stateTimer < 30) {
+      this.state = 'idle';
+      this.punchCooldown = 8;
+      return;
+    }
+    this.state = 'uppercut';
+    this.stateTimer = 0;
+    this.punchLanded = false;
+    this.punchCooldown = 20;
+    playSound('punch');
+  }
+
+  block(active) {
+    if (this.state === 'ko' || this.state === 'hit') return;
+    if (active && this.state !== 'jab' && this.state !== 'uppercut' && this.state !== 'winding') {
+      this.state = 'blocking';
+    } else if (!active && this.state === 'blocking') {
+      this.state = 'idle';
+    }
+  }
+
+  lean(active) {
+    if (this.state === 'ko' || this.state === 'hit') return;
+    if (active && this.state !== 'jab' && this.state !== 'uppercut' && this.state !== 'winding') {
+      this.state = 'leaning';
+    } else if (!active && this.state === 'leaning') {
+      this.state = 'idle';
+    }
+  }
+
+  takeHit(damage, dir, isUppercut) {
+    if (this.state === 'blocking') {
+      // Blocking absorbs most damage but still takes chip damage
+      const chipDmg = damage * 0.3;
+      this.health -= chipDmg;
+      playSound('block');
+      spawnParticles(this.x + this.facing * -30, this.bodyY - 60, '#ffff00', 3, 2);
+      if (this.health <= 0) {
+        this.health = 0;
+        this.state = 'ko';
+        this.stateTimer = 0;
+        this.koVY = -12;
+        this.koRot = 0;
+        playSound('ko');
+        spawnParticles(this.x, this.bodyY - 80, '#ffd700', 20, 6);
+      }
+      return false;
+    }
+    if (this.state === 'leaning') {
+      // Leaning takes chip damage like blocking
+      const chipDmg = damage * 0.3;
+      this.health -= chipDmg;
+      playSound('block');
+      spawnParticles(this.x + this.facing * -30, this.bodyY - 60, '#ffff00', 3, 2);
+      if (this.health <= 0) {
+        this.health = 0;
+        this.state = 'ko';
+        this.stateTimer = 0;
+        this.koVY = -12;
+        this.koRot = 0;
+        playSound('ko');
+        spawnParticles(this.x, this.bodyY - 80, '#ffd700', 20, 6);
+      }
+      return false;
+    }
+    this.health -= damage;
+    this.hitDir = dir;
+    this.hitByUppercut = isUppercut;
+    this.state = 'hit';
+    this.stateTimer = 0;
+    playSound('hit');
+
+    // Screen shake
+    shakeX = dir * 8;
+    shakeY = (Math.random() - 0.5) * 6;
+
+    // Particles
+    spawnParticles(this.x + dir * 20, this.bodyY - 70, '#ff4444', 8, 4);
+    spawnParticles(this.x + dir * 20, this.bodyY - 70, '#ffaa00', 5, 3);
+
+    if (this.health <= 0) {
+      this.health = 0;
+      this.state = 'ko';
+      this.stateTimer = 0;
+      this.koVY = -12;
+      this.koRot = 0;
+      playSound('ko');
+      spawnParticles(this.x, this.bodyY - 80, '#ffd700', 20, 6);
+      spawnParticles(this.x, this.bodyY - 80, '#ff6b6b', 15, 5);
+    }
+    return true;
+  }
+
+  update(dt) {
+    this.bobTimer += dt;
+    this.stateTimer += 1;
+    if (this.punchCooldown > 0) this.punchCooldown--;
+    if (this.comboTimer > 0) this.comboTimer--;
+    if (this.comboTimer === 0) this.comboCount = 0;
+
+    // Movement
+    if (this.state !== 'ko' && this.state !== 'hit') {
+      this.x += this.vx * 4;
+      this.x = Math.max(80, Math.min(W - 80, this.x));
+    }
+
+    // State transitions
+    if (this.state === 'jab') {
+      if (this.stateTimer > 11) {
+        this.state = 'idle';
+      }
+    }
+    if (this.state === 'uppercut') {
+      if (this.stateTimer > 22) {
+        this.state = 'idle';
+      }
+    }
+    if (this.state === 'hit') {
+      if (this.hitByUppercut) this.x += this.hitDir * 3;
+      this.x = Math.max(80, Math.min(W - 80, this.x));
+      if (this.stateTimer > 15) {
+        this.state = 'idle';
+      }
+    }
+    if (this.state === 'ko') {
+      this.koVY += 0.5;
+      this.koY += this.koVY;
+      this.koRot += this.facing * -3;
+      if (this.koY > 120) {
+        this.koY = 120;
+        this.koVY = 0;
+      }
+    }
+
+    // Animate arms — lead = jab fist (closest to opponent), rear = uppercut fist
+    this.leadWindupX = this.leadWindupX || 0;
+    this.leadWindupY = this.leadWindupY || 0;
+    if (this.state === 'jab') {
+      // Fast jab — only the lead fist moves
+      const jabExtend = Math.min(this.stateTimer / 3, 1);
+      const jabRetract = Math.max(0, (this.stateTimer - 4) / 7);
+      this.leadArmExtend = jabExtend * (1 - jabRetract);
+      this.rearArmExtend *= 0.85;
+      this.uppercutArmY = (this.uppercutArmY || 0) * 0.85;
+      this.leadWindupX *= 0.8;
+      this.leadWindupY *= 0.8;
+    } else if (this.state === 'winding') {
+      // Lead fist circles continuously while key is held
+      const circleSpeed = (2 * Math.PI) / 20; // one full loop every 20 frames
+      const circleRadius = 25;
+      const angle = this.stateTimer * circleSpeed;
+      this.leadWindupX = Math.cos(angle) * circleRadius * this.facing;
+      this.leadWindupY = Math.sin(angle) * circleRadius;
+      this.leadArmExtend = 0.05;
+      this.rearArmExtend *= 0.85;
+      this.uppercutArmY = (this.uppercutArmY || 0) * 0.85;
+    } else if (this.state === 'uppercut') {
+      // Throw the uppercut — lead fist stops circling, rear fist swings up
+      const swing = Math.min(this.stateTimer / 5, 1);
+      const retract = Math.max(0, (this.stateTimer - 8) / 10);
+      this.rearArmExtend = (0.2 + swing * 0.9) * (1 - retract);
+      this.uppercutArmY = -swing * 60 * (1 - retract);
+      this.leadArmExtend *= 0.85;
+      this.leadWindupX *= 0.8;
+      this.leadWindupY *= 0.8;
+    } else {
+      this.leadArmExtend *= 0.8;
+      this.rearArmExtend *= 0.8;
+      this.uppercutArmY = (this.uppercutArmY || 0) * 0.8;
+      this.leadWindupX *= 0.8;
+      this.leadWindupY *= 0.8;
+    }
+
+    // Head bob and lean
+    this.leanAmount = this.leanAmount || 0;
+    if (this.state === 'hit') {
+      this.headY = -5 + Math.sin(this.stateTimer * 0.5) * 3;
+      this.headRot = this.hitDir * 15 * (1 - this.stateTimer / 15);
+      this.leanAmount *= 0.7;
+    } else if (this.state === 'ko') {
+      this.headY = this.koY;
+      this.headRot = this.koRot;
+      this.leanAmount *= 0.7;
+    } else if (this.state === 'leaning') {
+      // Lean back away from opponent + slight duck
+      this.leanAmount += (1 - this.leanAmount) * 0.3;
+      this.headY = Math.sin(this.bobTimer * 0.06) * 3 + this.leanAmount * 30;
+      this.headRot = this.facing * -35 * this.leanAmount;
+      this.bodySquash = 1 - this.leanAmount * 0.15;
+    } else {
+      this.leanAmount *= 0.75;
+      this.headY = Math.sin(this.bobTimer * 0.06) * 3;
+      this.headRot = Math.sin(this.bobTimer * 0.04) * 1.5 + this.facing * -20 * this.leanAmount;
+      this.bodySquash = 1 + Math.sin(this.bobTimer * 0.06) * 0.02;
+    }
+
+    this.bodySquash += (1 - this.bodySquash) * 0.2;
+  }
+
+  getPunchHitbox() {
+    if (this.state === 'jab') {
+      // Jab connects quickly (frames 2-6)
+      if (this.stateTimer < 2 || this.stateTimer > 6) return null;
+      const extend = this.leadArmExtend || 0;
+      const gloveX = this.x + this.facing * 50 + this.facing * extend * 70;
+      const gloveY = this.bodyY - 78;
+      const size = 18 + extend * 6;
+      return {
+        x: gloveX - size, y: gloveY - size,
+        w: size * 2, h: size * 2,
+        isUppercut: false
+      };
+    }
+    if (this.state === 'uppercut') {
+      // Uppercut connects on the throw (frames 3-9)
+      if (this.stateTimer < 3 || this.stateTimer > 9) return null;
+      const extend = this.rearArmExtend || 0;
+      const uppercutY = this.uppercutArmY || 0;
+      const gloveX = this.x + this.facing * 35 + this.facing * extend * 65;
+      const gloveY = this.bodyY - 35 + uppercutY;
+      const size = 19 + extend * 7;
+      return {
+        x: gloveX - size, y: gloveY - size,
+        w: size * 2, h: size * 2,
+        isUppercut: true
+      };
+    }
+    return null;
+  }
+
+  getHurtbox() {
+    const lean = this.leanAmount || 0;
+    const leanShift = this.facing * -lean * 45;
+    return {
+      x: this.x - 45 + leanShift,
+      y: this.bodyY - 170,
+      w: 90,
+      h: 190
+    };
+  }
+
+  draw(ctx) {
+    ctx.save();
+    const bx = this.bodyX;
+    const by = this.bodyY;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(bx, by + 65, 45, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (this.state === 'ko' && this.koY > 80) {
+      // Draw fallen body
+      this.drawFallenBody(ctx, bx, by);
+    } else {
+      this.drawStandingBody(ctx, bx, by);
+    }
+
+    ctx.restore();
+  }
+
+  drawStandingBody(ctx, bx, by) {
+    const f = this.facing;
+    const lean = this.leanAmount || 0;
+
+    // Legs (drawn before lean transform so they stay planted)
+    const legSpread = 18;
+    const isMoving = Math.abs(this.vx) > 0;
+    const walkCycle = isMoving ? Math.sin(this.bobTimer * 0.5) * 12 : 0;
+    const legBob = Math.sin(this.bobTimer * 0.06) * 2 + walkCycle;
+    ctx.strokeStyle = this.color.dark;
+    ctx.lineWidth = 16;
+    ctx.lineCap = 'round';
+    // Left leg
+    ctx.beginPath();
+    ctx.moveTo(bx - legSpread, by + 15);
+    ctx.lineTo(bx - legSpread - 5, by + 55 + legBob);
+    ctx.stroke();
+    // Right leg
+    ctx.beginPath();
+    ctx.moveTo(bx + legSpread, by + 15);
+    ctx.lineTo(bx + legSpread + 5, by + 55 - legBob);
+    ctx.stroke();
+
+    // Shoes
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.ellipse(bx - legSpread - 5, by + 60 + legBob, 14, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(bx + legSpread + 5, by + 60 - legBob, 14, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Apply lean transform to upper body (pivot at waist)
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.rotate(f * -lean * 0.45);
+    ctx.translate(-bx, -by);
+
+    // Body (shorts area)
+    ctx.fillStyle = this.color.shorts;
+    ctx.beginPath();
+    rRect(ctx,bx - 28, by - 5, 56, 30, 6);
+    ctx.fill();
+
+    // Belt
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    rRect(ctx,bx - 30, by - 8, 60, 10, 3);
+    ctx.fill();
+    ctx.fillStyle = '#b8860b';
+    ctx.beginPath();
+    ctx.ellipse(bx, by - 3, 8, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Torso
+    const squash = this.bodySquash;
+    ctx.fillStyle = this.color.main;
+    ctx.save();
+    ctx.translate(bx, by - 35);
+    ctx.scale(1 / squash, squash);
+    ctx.beginPath();
+    rRect(ctx,-32, -30, 64, 60, 10);
+    ctx.fill();
+    // Chest highlight
+    ctx.fillStyle = this.color.light;
+    ctx.beginPath();
+    rRect(ctx,-24, -24, 48, 20, 8);
+    ctx.fill();
+    ctx.restore();
+
+    // Head drawn first so fists layer on top
+    this.drawHead(ctx, bx, by - 78 + this.headY, this.headRot);
+
+    // Both arms on the facing side — rear arm (uppercut) drawn first, then lead arm (jab) in front
+    this.drawArm(ctx, bx, by, 'rear');
+    this.drawArm(ctx, bx, by, 'lead');
+
+    ctx.restore(); // end lean transform
+  }
+
+  drawArm(ctx, bx, by, which) {
+    const f = this.facing;
+    const isLead = which === 'lead';
+
+    // Both arms attach from the torso on the facing side
+    // Lead arm is closer to opponent, rear arm is slightly behind
+    const shoulderOffsetX = isLead ? f * 25 : f * 10;
+    const shoulderOffsetY = isLead ? -58 : -48;
+    const armBaseX = bx + shoulderOffsetX;
+    const armBaseY = by + shoulderOffsetY;
+
+    // Guard position — both fists on the facing side
+    let extend, guardX, guardY, gloveSize;
+
+    if (isLead) {
+      // Lead fist (jab arm) — higher up, chin level
+      extend = this.leadArmExtend || 0;
+      const windupX = this.leadWindupX || 0;
+      const windupY = this.leadWindupY || 0;
+      guardX = bx + f * 50 + f * extend * 70 + windupX;
+      guardY = by - 78 + (this.state === 'blocking' ? -20 : 0) + windupY;
+      gloveSize = 18 + extend * 6;
+    } else {
+      // Rear fist (uppercut arm) — lower, stomach level
+      extend = this.rearArmExtend || 0;
+      const uppercutY = this.uppercutArmY || 0;
+      guardX = bx + f * 35 + f * extend * 65;
+      guardY = by - 35 + (this.state === 'blocking' ? -45 : 0) + uppercutY;
+      gloveSize = 19 + extend * 7;
+    }
+
+    const elbowX = armBaseX + (guardX - armBaseX) * 0.4;
+    const elbowY = armBaseY + (guardY - armBaseY) * 0.5 + 8;
+
+    // Upper arm
+    ctx.strokeStyle = this.color.main;
+    ctx.lineWidth = 13;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(armBaseX, armBaseY);
+    ctx.lineTo(elbowX, elbowY);
+    ctx.stroke();
+
+    // Forearm
+    ctx.strokeStyle = '#e8b89d';
+    ctx.lineWidth = 11;
+    ctx.beginPath();
+    ctx.moveTo(elbowX, elbowY);
+    ctx.lineTo(guardX, guardY);
+    ctx.stroke();
+
+    // Charged glow on rear glove when uppercut is ready
+    const charged = !isLead && this.state === 'winding' && this.stateTimer >= 30;
+    if (charged) {
+      const pulse = 0.5 + Math.sin(this.stateTimer * 0.3) * 0.3;
+      const glowRadius = gloveSize + 8 + Math.sin(this.stateTimer * 0.4) * 4;
+      ctx.save();
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 20 + Math.sin(this.stateTimer * 0.3) * 8;
+      ctx.fillStyle = `rgba(255, 215, 0, ${pulse * 0.35})`;
+      ctx.beginPath();
+      ctx.arc(guardX, guardY, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Glove
+    ctx.fillStyle = charged ? '#ffd700' : this.color.glove;
+    ctx.beginPath();
+    ctx.arc(guardX, guardY, gloveSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = charged ? '#d4a017' : this.color.gloveDark;
+    ctx.beginPath();
+    ctx.arc(guardX + f * 2, guardY + 3, gloveSize - 3, 0, Math.PI * 2);
+    ctx.fill();
+    // Glove shine
+    ctx.fillStyle = this.color.gloveShine;
+    ctx.beginPath();
+    ctx.arc(guardX - f * 4, guardY - 5, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  drawHead(ctx, x, y, rot) {
+    // Consistent width — height adjusts based on crop aspect ratio
+    const crop = this.playerNum === 1 ? faceCrop1 : faceCrop2;
+    const ovalRatio = (crop && crop.ovalRatio) ? crop.ovalRatio : (63/78);
+    const hw = 63;
+    const hh = Math.round(hw / ovalRatio);
+
+    ctx.save();
+    // y is the neck attachment — position so bottom of oval barely overlaps body
+    ctx.translate(x, y - hh + 10);
+    ctx.rotate(rot * Math.PI / 180);
+
+    // Clip to oval and draw face
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
+    ctx.clip();
+
+    const img = this.playerNum === 1 ? face1 : face2;
+    if (img.complete && img.naturalWidth > 0 && crop) {
+      // Draw cropped face filling the oval exactly
+      const dw = hw * 2.15;
+      const dh = hh * 2.15;
+      ctx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh,
+                    -dw / 2, -dh / 2, dw, dh);
+    } else if (img.complete && img.naturalWidth > 0) {
+      const dw = hw * 2.15;
+      const dh = hh * 2.15;
+      ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+    } else {
+      // Fallback: draw a simple face
+      ctx.fillStyle = '#e8b89d';
+      ctx.fillRect(-hw, -hh, hw * 2, hh * 2);
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.arc(-15, -10, 6, 0, Math.PI * 2);
+      ctx.arc(15, -10, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, 15, 14, 0, Math.PI);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Hit flash
+    if (this.state === 'hit' && this.stateTimer < 6) {
+      ctx.fillStyle = `rgba(255,255,255,${0.5 - this.stateTimer * 0.08})`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // KO stars
+    if (this.state === 'ko') {
+      for (let i = 0; i < 3; i++) {
+        const angle = this.bobTimer * 3 + (i * Math.PI * 2 / 3);
+        const sx = Math.cos(angle) * 55;
+        const sy = Math.sin(angle) * 25 - 65;
+        drawStar(ctx, sx, sy, 9, '#ffd700');
+      }
+    }
+
+    ctx.restore();
+  }
+
+  drawFallenBody(ctx, bx, by) {
+    ctx.save();
+    ctx.translate(bx, by + 40);
+    ctx.rotate(this.facing * -80 * Math.PI / 180);
+    ctx.scale(0.8, 0.8);
+
+    // Simplified fallen body
+    ctx.fillStyle = this.color.main;
+    ctx.beginPath();
+    rRect(ctx,-30, -30, 60, 50, 10);
+    ctx.fill();
+
+    ctx.fillStyle = this.color.shorts;
+    ctx.beginPath();
+    rRect(ctx,-25, 20, 50, 25, 6);
+    ctx.fill();
+
+    // Head
+    this.drawHead(ctx, 0, -55, this.facing * -20);
+
+    ctx.restore();
+  }
+}
+
+function drawStar(ctx, x, y, size, color) {
+  ctx.fillStyle = color;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const angle = (i * 4 * Math.PI / 5) - Math.PI / 2;
+    const method = i === 0 ? 'moveTo' : 'lineTo';
+    ctx[method](Math.cos(angle) * size, Math.sin(angle) * size);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function spawnParticles(x, y, color, count, speed) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = (Math.random() * 0.5 + 0.5) * speed;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd - 2,
+      life: 1,
+      decay: 0.02 + Math.random() * 0.02,
+      size: 3 + Math.random() * 5,
+      color
+    });
+  }
+}
+
+// Color schemes
+const P1_COLORS = {
+  main: '#c0392b',
+  light: '#e74c3c',
+  dark: '#962d22',
+  shorts: '#e74c3c',
+  glove: '#e74c3c',
+  gloveDark: '#c0392b',
+  gloveShine: 'rgba(255,255,255,0.4)',
+  glow: 'rgba(231,76,60,0.5)'
+};
+const P2_COLORS = {
+  main: '#2980b9',
+  light: '#3498db',
+  dark: '#1f6898',
+  shorts: '#3498db',
+  glove: '#3498db',
+  gloveDark: '#2980b9',
+  gloveShine: 'rgba(255,255,255,0.4)',
+  glow: 'rgba(52,152,219,0.5)'
+};
+
+let p1 = new Boxer(280, 1, P1_COLORS, face1, 1);
+let p2 = new Boxer(620, -1, P2_COLORS, face2, 2);
+
+// Input handling
+const keys = {};
+window.addEventListener('keydown', e => {
+  // Don't capture keys when typing in inputs
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  keys[e.code] = true;
+  e.preventDefault();
+});
+window.addEventListener('keyup', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  keys[e.code] = false;
+  e.preventDefault();
+});
+
+function handleInput() {
+  if (!gameRunning || countdownActive || koWinner) return;
+
+  // P1: A/D move, W block, S lean back, F jab, G hold=wind-up release=uppercut
+  p1.vx = 0;
+  if (keys['KeyA']) p1.vx = -1;
+  if (keys['KeyD']) p1.vx = 1;
+  if (keys['KeyW']) p1.block(true); else p1.block(false);
+  if (keys['KeyS']) p1.lean(true); else p1.lean(false);
+  if (keys['KeyF']) { p1.punch(0); keys['KeyF'] = false; }
+  if (keys['KeyG']) { p1.punch(1); } // hold to wind up
+  if (!keys['KeyG'] && p1.state === 'winding') { p1.releaseUppercut(); }
+
+  // P2: Arrows move, Up block, Down lean back, comma jab, period hold=wind-up release=uppercut
+  p2.vx = 0;
+  if (keys['ArrowLeft']) p2.vx = -1;
+  if (keys['ArrowRight']) p2.vx = 1;
+  if (keys['ArrowUp']) p2.block(true); else p2.block(false);
+  if (keys['ArrowDown']) p2.lean(true); else p2.lean(false);
+  if (keys['Comma']) { p2.punch(0); keys['Comma'] = false; }
+  if (keys['Period']) { p2.punch(1); } // hold to wind up
+  if (!keys['Period'] && p2.state === 'winding') { p2.releaseUppercut(); }
+}
+
+function checkHits() {
+  // P1 hitting P2 — registers once per punch during entire active hitbox window
+  const p1Hit = p1.getPunchHitbox();
+  const p2Hurt = p2.getHurtbox();
+  if (p1Hit && !p1.punchLanded && p2.state !== 'ko' && rectsOverlap(p1Hit, p2Hurt)) {
+    p1.punchLanded = true;
+    const dmg = p1Hit.isUppercut ? (12 + Math.random() * 5) : (2 + Math.random() * 2);
+    const landed = p2.takeHit(dmg, p1.facing, p1Hit.isUppercut);
+    if (landed) {
+      p1.comboCount++;
+      p1.comboTimer = 30;
+      if (p1.comboCount >= 3) {
+        showBigText('COMBO x' + p1.comboCount + '!');
+      }
+    }
+  }
+
+  // P2 hitting P1
+  const p2Hit = p2.getPunchHitbox();
+  const p1Hurt = p1.getHurtbox();
+  if (p2Hit && !p2.punchLanded && p1.state !== 'ko' && rectsOverlap(p2Hit, p1Hurt)) {
+    p2.punchLanded = true;
+    const dmg = p2Hit.isUppercut ? (12 + Math.random() * 5) : (2 + Math.random() * 2);
+    const landed = p1.takeHit(dmg, p2.facing, p2Hit.isUppercut);
+    if (landed) {
+      p2.comboCount++;
+      p2.comboTimer = 30;
+      if (p2.comboCount >= 3) {
+        showBigText('COMBO x' + p2.comboCount + '!');
+      }
+    }
+  }
+
+  // Check for KO
+  if (p1.state === 'ko' && !koWinner) {
+    koWinner = 2;
+    koTimer = 0;
+  }
+  if (p2.state === 'ko' && !koWinner) {
+    koWinner = 1;
+    koTimer = 0;
+  }
+}
+
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function showBigText(text, duration = 60) {
+  bigTextStr = text;
+  bigTextTimer = duration;
+}
+
+// Ensure boxers face each other
+function updateFacing() {
+  if (p1.x < p2.x) {
+    p1.facing = 1;
+    p2.facing = -1;
+  } else {
+    p1.facing = -1;
+    p2.facing = 1;
+  }
+}
+
+// Push boxers apart if overlapping
+function separateBoxers() {
+  const minDist = 80;
+  const dx = p2.x - p1.x;
+  const dist = Math.abs(dx);
+  if (dist < minDist) {
+    const push = (minDist - dist) / 2;
+    const dir = dx > 0 ? 1 : -1;
+    p1.x -= dir * push;
+    p2.x += dir * push;
+    p1.x = Math.max(80, Math.min(W - 80, p1.x));
+    p2.x = Math.max(80, Math.min(W - 80, p2.x));
+  }
+}
+
+// Drawing
+function drawBackground() {
+  // Dark arena background
+  const grad = ctx.createRadialGradient(W/2, H/2, 50, W/2, H/2, 500);
+  grad.addColorStop(0, '#2c3e50');
+  grad.addColorStop(1, '#1a1a2e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Twinkling stars
+  stars.forEach(s => {
+    s.twinkle += 0.03;
+    const alpha = 0.3 + Math.sin(s.twinkle) * 0.3;
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Ring floor
+  ctx.fillStyle = '#4a3728';
+  ctx.beginPath();
+  ctx.moveTo(100, H - 100);
+  ctx.lineTo(800, H - 100);
+  ctx.lineTo(850, H - 50);
+  ctx.lineTo(50, H - 50);
+  ctx.closePath();
+  ctx.fill();
+
+  // Ring mat
+  ctx.fillStyle = '#5a4332';
+  ctx.beginPath();
+  ctx.moveTo(120, H - 100);
+  ctx.lineTo(780, H - 100);
+  ctx.lineTo(820, H - 55);
+  ctx.lineTo(80, H - 55);
+  ctx.closePath();
+  ctx.fill();
+
+  // Ring mat lighter center
+  const matGrad = ctx.createLinearGradient(0, H - 100, 0, H - 55);
+  matGrad.addColorStop(0, 'rgba(255,255,255,0.08)');
+  matGrad.addColorStop(1, 'rgba(0,0,0,0.1)');
+  ctx.fillStyle = matGrad;
+  ctx.beginPath();
+  ctx.moveTo(120, H - 100);
+  ctx.lineTo(780, H - 100);
+  ctx.lineTo(820, H - 55);
+  ctx.lineTo(80, H - 55);
+  ctx.closePath();
+  ctx.fill();
+
+  // Ropes
+  for (let i = 0; i < 3; i++) {
+    const ropeY = 330 + i * 50;
+    ctx.strokeStyle = i === 1 ? '#fff' : '#e74c3c';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(60, ropeY);
+    ctx.lineTo(840, ropeY);
+    ctx.stroke();
+    // Rope shine
+    ctx.strokeStyle = `rgba(255,255,255,0.2)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(60, ropeY - 1);
+    ctx.lineTo(840, ropeY - 1);
+    ctx.stroke();
+  }
+
+  // Corner posts
+  [60, 840].forEach((px, idx) => {
+    ctx.fillStyle = '#888';
+    ctx.fillRect(px - 5, 310, 10, H - 370);
+    // Post top
+    ctx.fillStyle = '#aaa';
+    ctx.beginPath();
+    ctx.arc(px, 310, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = idx === 0 ? '#e74c3c' : '#3498db';
+    ctx.beginPath();
+    ctx.arc(px, 310, 6, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Spotlight effects
+  ctx.fillStyle = 'rgba(255,255,200,0.03)';
+  ctx.beginPath();
+  ctx.moveTo(W/2 - 200, 0);
+  ctx.lineTo(W/2 - 50, H);
+  ctx.lineTo(W/2 + 50, H);
+  ctx.lineTo(W/2 + 200, 0);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.15;
+    p.life -= p.decay;
+    if (p.life > 0) {
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  });
+  particles = particles.filter(p => p.life > 0);
+}
+
+function drawBigText() {
+  if (bigTextTimer > 0) {
+    bigTextTimer--;
+    const scale = bigTextTimer > 50 ? 1 + (60 - bigTextTimer) * 0.05 : 1.5;
+    const alpha = bigTextTimer > 50 ? (60 - bigTextTimer) / 10 : bigTextTimer / 50;
+    ctx.save();
+    ctx.translate(W / 2, H / 2 - 40);
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = Math.min(1, alpha);
+    ctx.fillStyle = '#ffd700';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 5;
+    ctx.font = 'bold 64px Impact, Arial Black, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.strokeText(bigTextStr, 0, 0);
+    ctx.fillText(bigTextStr, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+}
+
+function updateUI() {
+  document.getElementById('p1Health').style.width = p1.health + '%';
+  document.getElementById('p2Health').style.width = p2.health + '%';
+  document.getElementById('roundDisplay').textContent = 'ROUND ' + round;
+}
+
+// Countdown sequence
+async function startCountdown() {
+  countdownActive = true;
+  playSound('bell');
+  showBigText('ROUND ' + round, 60);
+  await wait(1200);
+  showBigText('3', 40);
+  playSound('block');
+  await wait(800);
+  showBigText('2', 40);
+  playSound('block');
+  await wait(800);
+  showBigText('1', 40);
+  playSound('block');
+  await wait(800);
+  showBigText('FIGHT!', 50);
+  playSound('bell');
+  countdownActive = false;
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Main game loop
+let lastTime = 0;
+function gameLoop(timestamp) {
+  const dt = Math.min((timestamp - lastTime) / 16.67, 3);
+  lastTime = timestamp;
+
+  handleInput();
+
+  if (gameRunning) {
+    p1.update(dt);
+    p2.update(dt);
+    updateFacing();
+    separateBoxers();
+    checkHits();
+
+    // KO handling
+    if (koWinner) {
+      koTimer++;
+      if (koTimer === 30) {
+        showBigText('K.O.!!', 90);
+        playSound('bell');
+      }
+      if (koTimer === 120) {
+        const winnerName = koWinner === 1 ? 'PLAYER 1' : 'PLAYER 2';
+        showBigText(winnerName + ' WINS!', 120);
+      }
+      if (koTimer === 280) {
+        // Next round or show menu
+        round++;
+        if (round > 3) {
+          round = 1;
+          gameRunning = false;
+          // Refresh previews with current faces
+          renderFighterSelects();
+          initPreviewBoxers();
+          startChooseMusic();
+          document.getElementById('overlay').classList.remove('hidden');
+        } else {
+          p1.reset();
+          p2.reset();
+          koWinner = 0;
+          startCountdown();
+        }
+      }
+    }
+
+    // Screen shake decay
+    shakeX *= 0.85;
+    shakeY *= 0.85;
+  }
+
+  // Draw
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  drawBackground();
+
+  // Draw boxers (back one first)
+  if (p1.x < p2.x) {
+    p1.draw(ctx);
+    p2.draw(ctx);
+  } else {
+    p2.draw(ctx);
+    p1.draw(ctx);
+  }
+
+  drawParticles();
+  drawBigText();
+
+  ctx.restore();
+
+  updateUI();
+
+  requestAnimationFrame(gameLoop);
+}
+
+// ============ CHARACTER SELECT PREVIEW ============
+
+// Choose screen music
+let chooseMusic = null;
+let chooseMusicStarted = false;
+function startChooseMusic() {
+  if (!chooseMusic) {
+    chooseMusic = new Audio('choose.mp3');
+    chooseMusic.loop = true;
+    chooseMusic.volume = 0.4;
+  }
+  chooseMusicStarted = false;
+  chooseMusic.currentTime = 0;
+  chooseMusic.play().then(() => { chooseMusicStarted = true; }).catch(() => {});
+}
+function stopChooseMusic() {
+  chooseMusicStarted = true; // prevent retry listeners from restarting it
+  if (chooseMusic) {
+    chooseMusic.pause();
+    chooseMusic.currentTime = 0;
+  }
+}
+
+// Preview boxers — lightweight clones that do random actions
+let previewBoxer1 = null;
+let previewBoxer2 = null;
+let previewTimer = 0;
+
+function initPreviewBoxers() {
+  // Position in "world" coords — will be scaled to fit canvas
+  previewBoxer1 = new Boxer(90, 1, P1_COLORS, face1, 1);
+  previewBoxer1.y = 200;
+  previewBoxer1.x = 150;
+  previewBoxer2 = new Boxer(90, -1, P2_COLORS, face2, 2);
+  previewBoxer2.y = 200;
+  previewBoxer2.x = 150;
+}
+
+function updatePreviewBoxer(b) {
+  b.update(1);
+  // Random actions when idle
+  if (b.state === 'idle' && Math.random() < 0.03) {
+    const action = Math.random();
+    if (action < 0.3) {
+      b.punch(0); // jab
+    } else if (action < 0.5) {
+      b.state = 'winding';
+      b.stateTimer = 0;
+    } else if (action < 0.7) {
+      b.state = 'blocking';
+      setTimeout(() => { if (b.state === 'blocking') b.state = 'idle'; }, 400 + Math.random() * 300);
+    } else {
+      b.state = 'leaning';
+      setTimeout(() => { if (b.state === 'leaning') b.state = 'idle'; }, 300 + Math.random() * 400);
+    }
+  }
+  // Release wind-up randomly after charging
+  if (b.state === 'winding' && b.stateTimer > 35 && Math.random() < 0.08) {
+    b.releaseUppercut();
+  }
+}
+
+function drawPreviewBoxer(canvasId, boxer) {
+  const cvs = document.getElementById(canvasId);
+  if (!cvs) return;
+  const pctx = cvs.getContext('2d');
+  pctx.clearRect(0, 0, cvs.width, cvs.height);
+  pctx.save();
+  // Scale boxer to fit 180x240 canvas — boxer spans roughly x:80-220, y:30-270
+  const scale = 0.85;
+  pctx.translate(cvs.width / 2, cvs.height * 0.92);
+  pctx.scale(scale, scale);
+  pctx.translate(-boxer.x, -boxer.y);
+  boxer.draw(pctx);
+  pctx.restore();
+}
+
+function previewLoop() {
+  const overlay = document.getElementById('overlay');
+  if (overlay && !overlay.classList.contains('hidden')) {
+    if (previewBoxer1) {
+      updatePreviewBoxer(previewBoxer1);
+      drawPreviewBoxer('previewCanvas1', previewBoxer1);
+    }
+    if (previewBoxer2) {
+      updatePreviewBoxer(previewBoxer2);
+      drawPreviewBoxer('previewCanvas2', previewBoxer2);
+    }
+  }
+  requestAnimationFrame(previewLoop);
+}
+
+initPreviewBoxers();
+requestAnimationFrame(previewLoop);
+
+// Keep trying to start music on any user interaction until it plays
+function tryStartChooseMusic() {
+  if (chooseMusicStarted) return;
+  const overlay = document.getElementById('overlay');
+  if (overlay && !overlay.classList.contains('hidden')) {
+    if (!chooseMusic) {
+      chooseMusic = new Audio('choose.mp3');
+      chooseMusic.loop = true;
+      chooseMusic.volume = 0.4;
+    }
+    chooseMusic.play().then(() => {
+      chooseMusicStarted = true;
+    }).catch(() => {});
+  }
+}
+['click', 'keydown', 'touchstart'].forEach(evt => {
+  document.addEventListener(evt, tryStartChooseMusic);
+});
+
+// Start
+document.getElementById('startBtn').addEventListener('click', () => {
+  stopChooseMusic();
+  document.getElementById('overlay').classList.add('hidden');
+  gameRunning = true;
+  round = 1;
+  koWinner = 0;
+  p1.reset();
+  p2.reset();
+  startCountdown();
+});
+
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>

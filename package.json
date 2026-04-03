@@ -1,0 +1,11 @@
+{
+  "name": "face-off-boxing",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "dotenv": "^17.4.0"
+  }
+}
