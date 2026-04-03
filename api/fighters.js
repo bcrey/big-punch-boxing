@@ -1,41 +1,56 @@
 const { Pool } = require('pg');
 
-function makePool() {
-  return new Pool({
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || '6543'),
-    database: process.env.DB_NAME || 'postgres',
-    ssl: { rejectUnauthorized: false },
-    max: 5,
-  });
+let pool = null;
+
+function getPool() {
+  if (!pool) {
+    pool = new Pool({
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || '6543'),
+      database: process.env.DB_NAME || 'postgres',
+      ssl: { rejectUnauthorized: false },
+      max: 3,
+      idleTimeoutMillis: 30000,
+    });
+  }
+  return pool;
+}
+
+let tableReady = false;
+
+async function ensureTable(p) {
+  if (tableReady) return;
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS fighters (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT 'New Fighter',
+      image_data TEXT,
+      crop JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      deleted_at TIMESTAMPTZ DEFAULT NULL
+    );
+  `);
+  await p.query(`
+    ALTER TABLE fighters ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
+  `);
+  tableReady = true;
 }
 
 module.exports = async function handler(req, res) {
-  // v2 - inline pool
-  const pool = makePool();
+  const p = getPool();
   try {
-    // Ensure table exists
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS fighters (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL DEFAULT 'New Fighter',
-        image_data TEXT,
-        crop JSONB,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-    `);
-
     if (req.method === 'GET') {
-      const result = await pool.query(
-        'SELECT id, name, image_data, crop FROM fighters ORDER BY created_at ASC'
+      const result = await p.query(
+        'SELECT id, name, image_data, crop FROM fighters WHERE deleted_at IS NULL ORDER BY created_at ASC'
       );
       res.status(200).json(result.rows);
     } else if (req.method === 'POST') {
+      await ensureTable(p);
       const { id, name, imageData, crop } = req.body;
-      await pool.query(
+      await p.query(
         `INSERT INTO fighters (id, name, image_data, crop)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (id) DO UPDATE SET
@@ -52,9 +67,6 @@ module.exports = async function handler(req, res) {
     }
   } catch (err) {
     console.error('fighters API error:', err);
-    console.error('DB_USER was:', process.env.DB_USER);
     res.status(500).json({ error: err.message });
-  } finally {
-    await pool.end();
   }
 };
