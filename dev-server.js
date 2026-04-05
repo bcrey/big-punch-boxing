@@ -61,5 +61,6 @@ const server = http.createServer(async (req, res) => {
   fs.createReadStream(filePath).pipe(res);
 });
 
-const PORT = 3000;
+const cliPort = Number.parseInt(process.argv[2] || '', 10);
+const PORT = Number.isInteger(cliPort) && cliPort > 0 ? cliPort : 3000;
 server.listen(PORT, () => console.log(`Dev server running at http://localhost:${PORT}`));
