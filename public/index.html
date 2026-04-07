@@ -136,6 +136,23 @@
     0%, 100% { opacity: 0.3; transform: scale(0.8); }
     50% { opacity: 1; transform: scale(1.2); }
   }
+  .loading-prompt {
+    display: none;
+    margin-top: 30px;
+    color: #fff;
+    font-size: 22px;
+    font-family: 'Arial', sans-serif;
+    letter-spacing: 3px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.6);
+    animation: promptPulse 1.2s ease-in-out infinite;
+  }
+  #loadingScreen.ready { cursor: pointer; }
+  #loadingScreen.ready .loading-dots { display: none; }
+  #loadingScreen.ready .loading-prompt { display: block; }
+  @keyframes promptPulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
   #overlay {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
@@ -643,13 +660,55 @@
     text-decoration: none;
   }
   .admin-link:hover { color: #888; }
+
+  /* Browser too narrow warning */
+  #narrowWarning {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #1a1a2e;
+    z-index: 9999;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px;
+    gap: 16px;
+  }
+  #narrowWarning .warn-icon {
+    font-size: 48px;
+    margin-bottom: 8px;
+  }
+  #narrowWarning h2 {
+    color: #fff;
+    font-family: 'Impact', 'Arial Black', sans-serif;
+    font-size: 24px;
+    letter-spacing: 1px;
+  }
+  #narrowWarning p {
+    color: #999;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    max-width: 300px;
+    line-height: 1.5;
+  }
+  @media (max-width: 895px) {
+    #narrowWarning { display: flex; }
+    #gameContainer { display: none; }
+  }
 </style>
 </head>
 <body>
+<div id="narrowWarning">
+  <div class="warn-icon">&#9889;</div>
+  <h2>Your browser is too narrow</h2>
+  <p>Resize your browser window to at least 895px wide to play Bam Bam Boxing.</p>
+</div>
 <div id="gameContainer">
   <div id="loadingScreen">
     <div class="loading-title">BAM BAM BOXING!</div>
     <div class="loading-dots"><span></span><span></span><span></span></div>
+    <div class="loading-prompt">CLICK TO START</div>
   </div>
   <canvas id="gameCanvas" width="900" height="600"></canvas>
   <div id="ui">
@@ -1527,13 +1586,42 @@ loadRoster().then(() => seedDefaults()).then(() => {
   gameLoaded = true;
   // Short delay to let fighter images start loading
   setTimeout(() => {
-    document.getElementById('loadingScreen').classList.add('hidden');
-    startChooseMusic();
-    // Remove from DOM after fade
-    setTimeout(() => {
-      const ls = document.getElementById('loadingScreen');
-      if (ls) ls.remove();
-    }, 500);
+    const ls = document.getElementById('loadingScreen');
+    const dismissLoading = () => {
+      ls.classList.add('hidden');
+      setTimeout(() => { if (ls.parentNode) ls.remove(); }, 500);
+    };
+    // Prepare the music object so play() is called synchronously in any gesture
+    if (!chooseMusic) {
+      chooseMusic = new Audio('choose.mp3');
+      chooseMusic.loop = true;
+      chooseMusic.volume = 0.4;
+    }
+    chooseMusic.currentTime = 0;
+    // Try autoplay first (works if user already interacted with the page)
+    const playPromise = chooseMusic.play();
+    if (playPromise) {
+      playPromise.then(() => {
+        chooseMusicStarted = true;
+        dismissLoading();
+      }).catch(() => {
+        // Autoplay blocked — show "CLICK TO START" and wait for user gesture
+        ls.classList.add('ready');
+        const startFromGesture = () => {
+          ls.removeEventListener('click', startFromGesture);
+          document.removeEventListener('keydown', startFromGesture);
+          document.removeEventListener('touchstart', startFromGesture);
+          chooseMusic.play().then(() => { chooseMusicStarted = true; }).catch(() => {});
+          dismissLoading();
+        };
+        ls.addEventListener('click', startFromGesture);
+        document.addEventListener('keydown', startFromGesture);
+        document.addEventListener('touchstart', startFromGesture);
+      });
+    } else {
+      chooseMusicStarted = true;
+      dismissLoading();
+    }
   }, 300);
 });
 
