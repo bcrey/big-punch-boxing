@@ -20,6 +20,19 @@
     overflow: hidden;
     user-select: none;
   }
+  #gameShell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+  }
+  #stageToolbar {
+    width: 900px;
+    min-height: 50px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+  }
   #gameContainer {
     position: relative;
     width: 900px;
@@ -136,23 +149,34 @@
     0%, 100% { opacity: 0.3; transform: scale(0.8); }
     50% { opacity: 1; transform: scale(1.2); }
   }
-  .loading-prompt {
+  .loading-actions {
     display: none;
     margin-top: 30px;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .loading-start {
+    padding: 12px 34px;
+    background: linear-gradient(180deg, #e74c3c, #c0392b);
     color: #fff;
-    font-size: 22px;
-    font-family: 'Arial', sans-serif;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 28px;
+    font-family: 'Impact', 'Arial Black', sans-serif;
     letter-spacing: 3px;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.6);
-    animation: promptPulse 1.2s ease-in-out infinite;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    box-shadow: 0 6px 20px rgba(231,76,60,0.36);
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
   }
-  #loadingScreen.ready { cursor: pointer; }
+  .loading-start:hover {
+    transform: scale(1.04);
+    box-shadow: 0 8px 24px rgba(231,76,60,0.48);
+  }
+  .loading-start:active { transform: scale(0.99); }
   #loadingScreen.ready .loading-dots { display: none; }
-  #loadingScreen.ready .loading-prompt { display: block; }
-  @keyframes promptPulse {
-    0%, 100% { opacity: 0.5; }
-    50% { opacity: 1; }
-  }
+  #loadingScreen.ready .loading-actions { display: flex; }
   #overlay {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
@@ -694,7 +718,65 @@
   }
   @media (max-width: 895px) {
     #narrowWarning { display: flex; }
-    #gameContainer { display: none; }
+    #gameShell { display: none; }
+  }
+  .audio-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 11px 16px;
+    border: 1px solid rgba(255, 215, 0, 0.35);
+    border-radius: 14px;
+    background: rgba(12, 12, 24, 0.84);
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.28);
+    transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  }
+  .audio-toggle:hover {
+    transform: translateY(-1px);
+    background: rgba(20, 20, 36, 0.92);
+    border-color: rgba(255, 215, 0, 0.6);
+  }
+  .audio-toggle:active { transform: translateY(0); }
+  .audio-toggle-off {
+    background: rgba(46, 16, 16, 0.92);
+    border-color: rgba(231, 76, 60, 0.7);
+  }
+  .audio-icon {
+    width: 24px;
+    height: 24px;
+    fill: currentColor;
+    pointer-events: none;
+  }
+  .audio-toggle-text {
+    font-size: 14px;
+    font-family: Arial, sans-serif;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+  .audio-toggle-stage {
+    min-width: 138px;
+  }
+  .audio-toggle-start {
+    min-width: 150px;
+    justify-content: center;
+  }
+  .audio-toggle .audio-icon-off { display: none; }
+  .audio-toggle.audio-toggle-off .audio-icon-on { display: none; }
+  .audio-toggle.audio-toggle-off .audio-icon-off { display: block; }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 </style>
 </head>
@@ -704,12 +786,37 @@
   <h2>Your browser is too narrow</h2>
   <p>Resize your browser window to at least 895px wide to play Bam Bam Boxing.</p>
 </div>
-<div id="gameContainer">
-  <div id="loadingScreen">
-    <div class="loading-title">BAM BAM BOXING!</div>
-    <div class="loading-dots"><span></span><span></span><span></span></div>
-    <div class="loading-prompt">CLICK TO START</div>
+<div id="gameShell">
+  <div id="stageToolbar">
+    <button class="audio-toggle audio-toggle-stage hidden" type="button" data-audio-toggle aria-pressed="false" aria-label="Mute audio">
+      <svg class="audio-icon audio-icon-on" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 10v4h4l5 4V6L7 10H3zm12.5 2a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 15.5 12zm0-9.5v2.06A9.5 9.5 0 0 1 20 12a9.5 9.5 0 0 1-4.5 8.44v2.06A11.5 11.5 0 0 0 22 12 11.5 11.5 0 0 0 15.5 2.5z"/>
+      </svg>
+      <svg class="audio-icon audio-icon-off" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M16.5 12a4.47 4.47 0 0 0-.9-2.7l1.43-1.43A6.44 6.44 0 0 1 18.5 12c0 1.25-.35 2.42-.97 3.43l-1.45-1.45c.27-.61.42-1.28.42-1.98zM19 12c0-2.78-1.23-5.26-3.17-6.94l1.42-1.42A11.46 11.46 0 0 1 21 12c0 2.97-1.13 5.68-2.98 7.72l-1.43-1.43A9.45 9.45 0 0 0 19 12zM4.27 3 3 4.27 7.73 9H3v6h4l5 4v-6.73l4.73 4.73A9.7 9.7 0 0 1 15.5 19v2.06c1.21-.27 2.35-.76 3.37-1.43L19.73 21 21 19.73 4.27 3zM12 6 9.91 7.67 12 9.76V6z"/>
+      </svg>
+      <span class="audio-toggle-text" data-audio-toggle-text>Sound On</span>
+      <span class="sr-only" data-audio-toggle-label>Sound on</span>
+    </button>
   </div>
+  <div id="gameContainer">
+    <div id="loadingScreen">
+      <div class="loading-title">BAM BAM BOXING!</div>
+      <div class="loading-dots"><span></span><span></span><span></span></div>
+      <div class="loading-actions">
+        <button id="loadingStartBtn" class="loading-start" type="button">START</button>
+        <button class="audio-toggle audio-toggle-start" type="button" data-audio-toggle aria-pressed="false" aria-label="Mute audio">
+          <svg class="audio-icon audio-icon-on" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 10v4h4l5 4V6L7 10H3zm12.5 2a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 15.5 12zm0-9.5v2.06A9.5 9.5 0 0 1 20 12a9.5 9.5 0 0 1-4.5 8.44v2.06A11.5 11.5 0 0 0 22 12 11.5 11.5 0 0 0 15.5 2.5z"/>
+          </svg>
+          <svg class="audio-icon audio-icon-off" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M16.5 12a4.47 4.47 0 0 0-.9-2.7l1.43-1.43A6.44 6.44 0 0 1 18.5 12c0 1.25-.35 2.42-.97 3.43l-1.45-1.45c.27-.61.42-1.28.42-1.98zM19 12c0-2.78-1.23-5.26-3.17-6.94l1.42-1.42A11.46 11.46 0 0 1 21 12c0 2.97-1.13 5.68-2.98 7.72l-1.43-1.43A9.45 9.45 0 0 0 19 12zM4.27 3 3 4.27 7.73 9H3v6h4l5 4v-6.73l4.73 4.73A9.7 9.7 0 0 1 15.5 19v2.06c1.21-.27 2.35-.76 3.37-1.43L19.73 21 21 19.73 4.27 3zM12 6 9.91 7.67 12 9.76V6z"/>
+          </svg>
+          <span class="audio-toggle-text" data-audio-toggle-text>Sound On</span>
+          <span class="sr-only" data-audio-toggle-label>Sound on</span>
+        </button>
+      </div>
+    </div>
   <canvas id="gameCanvas" width="900" height="600"></canvas>
   <div id="ui">
     <div class="health-container">
@@ -814,6 +921,7 @@
     <div id="lobbyStatus" style="color:#aaa;font-size:16px;font-family:Arial,sans-serif;margin-top:20px"></div>
   </div>
 </div>
+</div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
@@ -838,12 +946,130 @@ function rRect(ctx, x, y, w, h, r) {
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let audioCtx;
 let suppressEffects = false;
+let chooseMusic = null;
+let chooseMusicStarted = false;
+let audioMuted = false;
+let hasPressedStart = false;
+const transientAudio = new Set();
+
+try {
+  audioMuted = window.localStorage.getItem('bamBamMuted') === 'true';
+} catch (err) {}
+
 function ensureAudio() {
   if (!audioCtx) audioCtx = new AudioCtx();
+  if (audioCtx.state === 'suspended' && !audioMuted) {
+    audioCtx.resume().catch(() => {});
+  }
 }
 
-function playSound(type) {
-  if (suppressEffects) return;
+function ensureChooseMusic() {
+  if (!chooseMusic) {
+    chooseMusic = new Audio('choose.mp3');
+    chooseMusic.loop = true;
+    chooseMusic.volume = 0.4;
+  }
+  return chooseMusic;
+}
+
+function rememberMutePreference() {
+  try {
+    window.localStorage.setItem('bamBamMuted', String(audioMuted));
+  } catch (err) {}
+}
+
+function shouldHaveMenuMusic() {
+  if (!hasPressedStart || gameRunning) return false;
+  const ids = ['loadingScreen', 'overlay', 'managerOverlay', 'adminOverlay', 'lobbyOverlay'];
+  return ids.some((id) => {
+    const el = document.getElementById(id);
+    return el && !el.classList.contains('hidden');
+  });
+}
+
+function isOnLoadingScreen() {
+  const loadingScreen = document.getElementById('loadingScreen');
+  return !!(loadingScreen && !loadingScreen.classList.contains('hidden'));
+}
+
+function updateAudioToggle() {
+  document.querySelectorAll('[data-audio-toggle]').forEach((btn) => {
+    const label = btn.querySelector('[data-audio-toggle-label]');
+    const text = btn.querySelector('[data-audio-toggle-text]');
+    if (label) label.textContent = audioMuted ? 'Sound off' : 'Sound on';
+    if (text) text.textContent = audioMuted ? 'Sound Off' : 'Sound On';
+    btn.setAttribute('aria-pressed', String(audioMuted));
+    btn.setAttribute('aria-label', audioMuted ? 'Sound off' : 'Sound on');
+    btn.classList.toggle('audio-toggle-off', audioMuted);
+  });
+}
+
+function updateAudioToggleVisibility() {
+  const loadingScreen = document.getElementById('loadingScreen');
+  const showStageToggle = !loadingScreen || loadingScreen.classList.contains('hidden');
+  document.querySelectorAll('.audio-toggle-stage').forEach((btn) => {
+    btn.classList.toggle('hidden', !showStageToggle);
+  });
+}
+
+function stopTransientAudio() {
+  transientAudio.forEach((audio) => {
+    audio.pause();
+    audio.currentTime = 0;
+  });
+  transientAudio.clear();
+}
+
+function syncMenuMusic(options = {}) {
+  if (!shouldHaveMenuMusic()) return;
+  const { restart = false } = options;
+  const music = ensureChooseMusic();
+  if (restart) music.currentTime = 0;
+  if (audioMuted) {
+    music.pause();
+    return;
+  }
+  const playPromise = music.play();
+  if (playPromise && typeof playPromise.then === 'function') {
+    playPromise.then(() => {
+      chooseMusicStarted = true;
+    }).catch(() => {
+      chooseMusicStarted = false;
+    });
+  } else {
+    chooseMusicStarted = true;
+  }
+}
+
+function setAudioMuted(nextMuted) {
+  audioMuted = nextMuted;
+  rememberMutePreference();
+  updateAudioToggle();
+  if (audioMuted) {
+    if (chooseMusic) chooseMusic.pause();
+    stopTransientAudio();
+    if (audioCtx && audioCtx.state === 'running') {
+      audioCtx.suspend().catch(() => {});
+    }
+    return;
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
+  syncMenuMusic();
+}
+
+function toggleAudioMuted() {
+  const enablingSound = audioMuted;
+  setAudioMuted(!audioMuted);
+  if (enablingSound && !hasPressedStart && isOnLoadingScreen()) {
+    playSound('punch', { force: true });
+  }
+}
+
+function playSound(type, options = {}) {
+  const { force = false } = options;
+  if (suppressEffects || audioMuted || (!hasPressedStart && !force)) return;
   ensureAudio();
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
@@ -891,9 +1117,13 @@ function playSound(type) {
     // Play bell.mp3 three times in quick succession, overlapping
     for (let ring = 0; ring < 3; ring++) {
       setTimeout(() => {
+        if (audioMuted) return;
         const a = new Audio('bell.mp3');
         a.volume = 0.7;
-        a.play();
+        transientAudio.add(a);
+        const cleanup = () => transientAudio.delete(a);
+        a.addEventListener('ended', cleanup, { once: true });
+        a.play().catch(cleanup);
       }, ring * 300);
     }
     // Don't use the original osc
@@ -1587,41 +1817,35 @@ loadRoster().then(() => seedDefaults()).then(() => {
   // Short delay to let fighter images start loading
   setTimeout(() => {
     const ls = document.getElementById('loadingScreen');
+    const startBtn = document.getElementById('loadingStartBtn');
+    if (!ls || !startBtn) return;
     const dismissLoading = () => {
       ls.classList.add('hidden');
-      setTimeout(() => { if (ls.parentNode) ls.remove(); }, 500);
+      updateAudioToggleVisibility();
+      setTimeout(() => {
+        if (ls.parentNode) ls.remove();
+        updateAudioToggleVisibility();
+      }, 500);
     };
-    // Prepare the music object so play() is called synchronously in any gesture
-    if (!chooseMusic) {
-      chooseMusic = new Audio('choose.mp3');
-      chooseMusic.loop = true;
-      chooseMusic.volume = 0.4;
-    }
-    chooseMusic.currentTime = 0;
-    // Try autoplay first (works if user already interacted with the page)
-    const playPromise = chooseMusic.play();
-    if (playPromise) {
-      playPromise.then(() => {
-        chooseMusicStarted = true;
-        dismissLoading();
-      }).catch(() => {
-        // Autoplay blocked — show "CLICK TO START" and wait for user gesture
-        ls.classList.add('ready');
-        const startFromGesture = () => {
-          ls.removeEventListener('click', startFromGesture);
-          document.removeEventListener('keydown', startFromGesture);
-          document.removeEventListener('touchstart', startFromGesture);
-          chooseMusic.play().then(() => { chooseMusicStarted = true; }).catch(() => {});
-          dismissLoading();
-        };
-        ls.addEventListener('click', startFromGesture);
-        document.addEventListener('keydown', startFromGesture);
-        document.addEventListener('touchstart', startFromGesture);
-      });
-    } else {
-      chooseMusicStarted = true;
+    const startFromLoadingScreen = () => {
+      hasPressedStart = true;
+      if (!audioMuted) {
+        startChooseMusic();
+      } else {
+        chooseMusicStarted = false;
+      }
+      startBtn.disabled = true;
+      startBtn.style.pointerEvents = 'none';
+      startBtn.style.opacity = '0.8';
       dismissLoading();
-    }
+    };
+
+    // Prepare the music object so the START gesture can play it reliably.
+    ensureChooseMusic();
+    ls.classList.add('ready');
+    updateAudioToggle();
+    updateAudioToggleVisibility();
+    startBtn.addEventListener('click', startFromLoadingScreen, { once: true });
   }, 300);
 });
 
@@ -2714,17 +2938,12 @@ function gameLoop(timestamp) {
 // ============ CHARACTER SELECT PREVIEW ============
 
 // Choose screen music
-let chooseMusic = null;
-let chooseMusicStarted = false;
 function startChooseMusic() {
-  if (!chooseMusic) {
-    chooseMusic = new Audio('choose.mp3');
-    chooseMusic.loop = true;
-    chooseMusic.volume = 0.4;
-  }
+  const music = ensureChooseMusic();
   chooseMusicStarted = false;
-  chooseMusic.currentTime = 0;
-  chooseMusic.play().then(() => { chooseMusicStarted = true; }).catch(() => {});
+  music.currentTime = 0;
+  if (audioMuted) return;
+  music.play().then(() => { chooseMusicStarted = true; }).catch(() => {});
 }
 function stopChooseMusic() {
   chooseMusicStarted = true; // prevent retry listeners from restarting it
@@ -2808,15 +3027,11 @@ requestAnimationFrame(previewLoop);
 
 // Keep trying to start music on any user interaction until it plays
 function tryStartChooseMusic() {
-  if (!gameLoaded || chooseMusicStarted) return;
+  if (!gameLoaded || !hasPressedStart || chooseMusicStarted || audioMuted) return;
   const overlay = document.getElementById('overlay');
   if (overlay && !overlay.classList.contains('hidden')) {
-    if (!chooseMusic) {
-      chooseMusic = new Audio('choose.mp3');
-      chooseMusic.loop = true;
-      chooseMusic.volume = 0.4;
-    }
-    chooseMusic.play().then(() => {
+    const music = ensureChooseMusic();
+    music.play().then(() => {
       chooseMusicStarted = true;
     }).catch(() => {});
   }
@@ -2824,6 +3039,11 @@ function tryStartChooseMusic() {
 ['click', 'keydown', 'touchstart'].forEach(evt => {
   document.addEventListener(evt, tryStartChooseMusic);
 });
+document.querySelectorAll('[data-audio-toggle]').forEach((btn) => {
+  btn.addEventListener('click', toggleAudioMuted);
+});
+updateAudioToggle();
+updateAudioToggleVisibility();
 
 // Start / Ready button
 document.getElementById('startBtn').addEventListener('click', () => {
