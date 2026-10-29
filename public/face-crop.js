@@ -78,6 +78,31 @@ const FaceCrop = (() => {
     return nearest;
   }
 
+  // Resample `from` to one point per target point, same winding, starting near target[0],
+  // so the two outlines can be tweened point by point.
+  function morphStart(from, target) {
+    const signed = points => points.reduce((sum, a, i) => { const b = points[(i + 1) % points.length]; return sum + a.x * b.y - b.x * a.y; }, 0);
+    let ring = signed(from) * signed(target) < 0 ? [...from].reverse() : from;
+    const first = ring.reduce((best, p, i) => Math.hypot(p.x - target[0].x, p.y - target[0].y) < Math.hypot(ring[best].x - target[0].x, ring[best].y - target[0].y) ? i : best, 0);
+    ring = [...ring.slice(first), ...ring.slice(0, first)];
+    const lengths = ring.map((a, i) => { const b = ring[(i + 1) % ring.length]; return Math.hypot(b.x - a.x, b.y - a.y); });
+    const total = lengths.reduce((sum, l) => sum + l, 0);
+    let edge = 0, walked = 0;
+    return target.map((_, i) => {
+      const goal = total * i / target.length;
+      while (edge < ring.length - 1 && walked + lengths[edge] < goal) walked += lengths[edge++];
+      const a = ring[edge], b = ring[(edge + 1) % ring.length], t = lengths[edge] ? (goal - walked) / lengths[edge] : 0;
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    });
+  }
+
+  function polygon(points, x, y, zoom) {
+    const cut = new Path2D();
+    points.forEach((p, i) => cut[i ? 'lineTo' : 'moveTo'](x + p.x * zoom, y + p.y * zoom));
+    cut.closePath();
+    return cut;
+  }
+
   function path(crop, x, y, width, height) {
     const cut = new Path2D();
     if (isOutline(crop)) {
@@ -126,7 +151,31 @@ const FaceCrop = (() => {
     return outlines.filter(valid).sort((a, b) => area(b) - area(a));
   }
 
-  return { bounds, area, valid, isOutline, fromOutline, ellipse, resize, nearestEdge, path, draw, detect, copy, clamp };
+  // Ask Claude, via the server, to trace the head. Returns [outline] or [] like detect().
+  async function detectAI(image) {
+    const input = document.createElement('canvas');
+    const scale = Math.min(1, 1024 / Math.max(image.naturalWidth, image.naturalHeight));
+    input.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    input.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    input.getContext('2d').drawImage(image, 0, 0, input.width, input.height);
+    const response = await fetch('/api/ai-crop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image: input.toDataURL('image/jpeg', .9).split(',')[1],
+        mediaType: 'image/jpeg', width: input.width, height: input.height
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `AI cropping failed (${response.status})`);
+    const outline = (result.outline || []).map(p => ({
+      x: clamp(p.x * image.naturalWidth, 0, image.naturalWidth),
+      y: clamp(p.y * image.naturalHeight, 0, image.naturalHeight)
+    }));
+    return valid(outline) ? [outline] : [];
+  }
+
+  return { bounds, area, valid, isOutline, fromOutline, ellipse, resize, nearestEdge, morphStart, polygon, path, draw, detect, detectAI, copy, clamp };
 })();
 
 if (typeof module !== 'undefined') module.exports = FaceCrop;

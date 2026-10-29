@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: ['.env.local', '.env'], quiet: true });
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -8,6 +8,7 @@ const fightersHandler = require('./api/fighters');
 const fighterByIdHandler = require('./api/fighters/[id]');
 const adminHandler = require('./api/admin');
 const healthHandler = require('./api/health');
+const aiCropHandler = require('./api/ai-crop');
 
 const MIME = {
   '.html': 'text/html',
@@ -44,6 +45,9 @@ const server = http.createServer(async (req, res) => {
   // API routes
   if (pathname === '/api/health') {
     return healthHandler(req, res);
+  }
+  if (pathname === '/api/ai-crop') {
+    return aiCropHandler(req, res);
   }
   if (pathname === '/api/admin') {
     return adminHandler(req, res);
