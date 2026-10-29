@@ -2,6 +2,9 @@
   "functions": {
     "api/**": {
       "maxDuration": 10
+    },
+    "api/ai-crop.js": {
+      "maxDuration": 60
     }
   },
   "rewrites": [

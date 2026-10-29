@@ -19,7 +19,7 @@
 </div>
 <div id="gameShell">
   <div id="stageToolbar">
-    <div class="club-brand"><span class="brand-star" aria-hidden="true">★</span><div>BAM BAM BOXING<small>THE PAPER PUNCH EDITION</small></div></div>
+    <div class="club-brand"><span class="brand-star" aria-hidden="true">★</span><div>BAM BAM BOXING</div></div>
     <button class="audio-toggle audio-toggle-stage hidden" type="button" data-audio-toggle aria-pressed="false" aria-label="Mute audio">
       <svg class="audio-icon audio-icon-on" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M3 10v4h4l5 4V6L7 10H3zm12.5 2a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 15.5 12zm0-9.5v2.06A9.5 9.5 0 0 1 20 12a9.5 9.5 0 0 1-4.5 8.44v2.06A11.5 11.5 0 0 0 22 12 11.5 11.5 0 0 0 15.5 2.5z"/>
@@ -816,6 +816,7 @@ function renderEditor() {
     <div class="crop-mode-switch" role="group" aria-label="Crop method">
       <button type="button" id="ovalCropMode" aria-pressed="true">Oval crop</button>
       <button type="button" id="outlineCropMode" aria-pressed="false">Custom outline</button>
+      <button type="button" id="aiCropMode" aria-pressed="false">AI cropping</button>
     </div>
     <div class="crop-workspace">
       <div class="crop-area" id="cropArea" aria-label="Photo crop editor">
@@ -864,6 +865,7 @@ function renderEditor() {
   });
   document.getElementById('ovalCropMode').onclick = () => setCropMode('oval');
   document.getElementById('outlineCropMode').onclick = () => setCropMode('outline');
+  document.getElementById('aiCropMode').onclick = () => setCropMode('ai');
   document.getElementById('cropZoomSlider').addEventListener('input', (e) => {
     cropZoom = e.target.value / 100;
     drawCropPreview();
@@ -955,9 +957,11 @@ function renderEditor() {
 function setCropMode(mode) {
   cropMode = mode;
   outlineEditor?.unmount();
-  const custom = mode === 'outline';
-  document.getElementById('ovalCropMode').setAttribute('aria-pressed', String(!custom));
-  document.getElementById('outlineCropMode').setAttribute('aria-pressed', String(custom));
+  // AI cropping produces an ordinary outline, edited with the same tools.
+  const custom = mode === 'outline' || mode === 'ai';
+  document.getElementById('ovalCropMode').setAttribute('aria-pressed', String(mode === 'oval'));
+  document.getElementById('outlineCropMode').setAttribute('aria-pressed', String(mode === 'outline'));
+  document.getElementById('aiCropMode').setAttribute('aria-pressed', String(mode === 'ai'));
   document.getElementById('ovalCropControls').classList.toggle('hidden', custom);
   document.getElementById('outlineCropControls').classList.toggle('hidden', !custom);
   document.getElementById('cropInstructions').textContent = custom
@@ -967,7 +971,7 @@ function setCropMode(mode) {
   document.querySelectorAll('#outlineCropControls button, #ovalCropControls input').forEach(control => control.disabled = !cropImg);
   if (!cropImg) return;
   document.getElementById('saveFighterButton').disabled = document.getElementById('cropArea').dataset.loading === 'true';
-  if (custom) outlineEditor?.mount();
+  if (custom) outlineEditor?.mount(mode === 'ai' ? 'ai' : 'local');
   else { drawCropPreview(); setupCropDrag(); }
 }
 
@@ -1090,13 +1094,14 @@ function computeOvalCrop() {
 
 function computeCropFromEditor() {
   const oval = computeOvalCrop();
-  if (cropMode !== 'outline' || !outlineEditor) return oval;
+  if (cropMode === 'oval' || !outlineEditor) return oval;
   const outline = FaceCrop.fromOutline(outlineEditor.points);
   return outline ? { ...oval, ...outline } : null;
 }
 
 async function saveFighter() {
-  if (document.getElementById('cropArea')?.dataset.loading === 'true' || (cropMode === 'outline' && outlineEditor?.busy)) return;
+  if (document.getElementById('cropArea')?.dataset.loading === 'true' || (cropMode !== 'oval' && outlineEditor?.busy)) return;
+  outlineEditor?.finishMorph();
   const fighter = roster.find(f => f.id === editingFighterId);
   if (!fighter) return;
   const nameInput = document.getElementById('editorName');

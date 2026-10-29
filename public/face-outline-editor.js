@@ -1,3 +1,5 @@
+const AI_STEPS = ['Sizing up the fighter', 'Spotting the face', 'Tracing the scalp', 'Finding the ears', 'Checking the chin', 'Sharpening the scissors', 'Almost there'];
+
 class FaceOutlineEditor {
   constructor(area, image, crop, onChange) {
     this.area = area;
@@ -9,6 +11,8 @@ class FaceOutlineEditor {
     this.selected = -1;
     this.request = 0;
     this.attempted = FaceCrop.isOutline(crop);
+    this.aiAttempted = false;
+    this.method = 'local';
     this.faces = [];
     this.faceIndex = 0;
     this.zoom = 1;
@@ -16,25 +20,39 @@ class FaceOutlineEditor {
     this.message = this.attempted ? 'Saved outline loaded. Find head outline to retrace the hair, or drag points to fine tune.' : 'Find the whole head, including hair, or shape the outline yourself.';
   }
 
-  mount() {
+  mount(method = 'local') {
     this.active = true;
+    this.method = method;
     this.area.replaceChildren();
     this.canvas = document.createElement('canvas');
     this.canvas.setAttribute('aria-hidden', 'true');
     this.canvas.className = 'outline-canvas';
     this.handles = document.createElement('div');
     this.handles.className = 'outline-handles';
-    this.area.append(this.canvas, this.handles);
+    // Shown while the AI traces, then a stamp when the cut lands.
+    this.scan = document.createElement('div');
+    this.scan.className = 'ai-scan';
+    this.scan.setAttribute('aria-hidden', 'true');
+    this.scan.innerHTML = '<i class="ai-corner tl"></i><i class="ai-corner tr"></i><i class="ai-corner bl"></i><i class="ai-corner br"></i>' +
+      '<i class="ai-beam"></i><span class="ai-plate"><b>★</b><span class="ai-step"></span></span>';
+    const stamp = document.createElement('div');
+    stamp.className = 'ai-stamp';
+    stamp.setAttribute('aria-hidden', 'true');
+    stamp.textContent = 'CUT!';
+    this.area.append(this.canvas, this.handles, this.scan, stamp);
     this.area.onpointerdown = event => this.pointerDown(event);
     this.area.onpointermove = event => this.pointerMove(event);
     this.area.onpointerup = this.area.onpointercancel = event => this.pointerUp(event);
     this.area.ondblclick = event => this.addPoint(event);
     this.area.onkeydown = event => this.keyDown(event);
     this.fit();
-    if (!this.attempted) this.detect();
+    if (method === 'ai' ? !this.aiAttempted : !this.attempted) this.detect();
   }
 
   unmount() {
+    this.finishMorph();
+    this.scanning(false);
+    this.area.classList.remove('ai-cut');
     this.active = false;
     this.request++;
     this.busy = false;
@@ -44,6 +62,7 @@ class FaceOutlineEditor {
   }
 
   remember() {
+    this.finishMorph();
     this.history.push(FaceCrop.copy(this.points));
     if (this.history.length > 40) this.history.shift();
   }
@@ -60,12 +79,55 @@ class FaceOutlineEditor {
     document.getElementById('outlineStatus').textContent = this.message;
     document.getElementById('detectOutline').disabled = !!this.busy;
     document.getElementById('saveFighterButton').disabled = !!this.busy || this.area.dataset.loading === 'true';
-    document.getElementById('detectOutline').textContent = this.busy ? 'Finding head…' : 'Find head outline';
+    const ai = this.method === 'ai';
+    this.scanning(!!this.busy && ai);
+    document.getElementById('detectOutline').textContent = this.busy ? (ai ? 'AI is tracing…' : 'Finding head…') : (ai ? 'Redo AI crop' : 'Find head outline');
     document.getElementById('undoOutline').disabled = !this.history.length;
     document.getElementById('removeOutlinePoint').disabled = this.selected < 0 || this.points.length <= 3;
     const next = document.getElementById('nextOutlineFace');
     next.classList.toggle('hidden', this.faces.length < 2);
     next.textContent = `Head ${this.faceIndex + 1}/${this.faces.length} ›`;
+  }
+
+  scanning(on) {
+    this.area.classList.toggle('ai-busy', on);
+    if (on && !this.stepTimer) {
+      let step = 0;
+      const show = () => {
+        const label = this.scan.querySelector('.ai-step');
+        label.textContent = AI_STEPS[Math.min(step++, AI_STEPS.length - 1)] + '…';
+        label.classList.remove('fresh'); void label.offsetWidth; label.classList.add('fresh');
+      };
+      show();
+      this.stepTimer = setInterval(show, 2200);
+    } else if (!on && this.stepTimer) {
+      clearInterval(this.stepTimer);
+      this.stepTimer = null;
+    }
+  }
+
+  // Morph the old outline into the AI's, then stamp it. Edits snap straight to the result.
+  reveal(from, target) {
+    this.area.classList.remove('ai-cut'); void this.area.offsetWidth; this.area.classList.add('ai-cut');
+    clearTimeout(this.cutTimer);
+    this.cutTimer = setTimeout(() => this.area.classList.remove('ai-cut'), 1200);
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const start = FaceCrop.morphStart(from, target), began = performance.now(), request = this.request;
+    this.morph = target;
+    const step = now => {
+      if (this.morph !== target || request !== this.request || !this.active) return;
+      const t = Math.min(1, (now - began) / 700), ease = 1 - (1 - t) ** 3;
+      this.points = start.map((p, i) => ({ x: p.x + (target[i].x - p.x) * ease, y: p.y + (target[i].y - p.y) * ease }));
+      if (t < 1) { this.draw(); requestAnimationFrame(step); } else this.finishMorph();
+    };
+    step(began);
+  }
+
+  finishMorph() {
+    if (!this.morph) return;
+    this.points = FaceCrop.copy(this.morph);
+    this.morph = null;
+    this.update();
   }
 
   fit() {
@@ -90,17 +152,18 @@ class FaceOutlineEditor {
 
   async detect() {
     if (this.busy || !this.active) return;
-    const request = ++this.request;
+    const request = ++this.request, ai = this.method === 'ai';
     this.attempted = true;
+    if (ai) this.aiAttempted = true;
     this.busy = true;
-    this.message = 'Finding the head and hair… First use may take a few seconds.';
+    this.message = ai ? 'AI is finding the whole head… This can take 15–30 seconds.' : 'Finding the head and hair… First use may take a few seconds.';
     this.update();
     let timeout;
     try {
       await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
       const faces = await Promise.race([
-        FaceCrop.detect(this.image),
-        new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Detection timed out')), 30000); })
+        ai ? FaceCrop.detectAI(this.image) : FaceCrop.detect(this.image),
+        new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error(ai ? 'AI cropping timed out.' : 'Detection timed out')), ai ? 75000 : 30000); })
       ]);
       if (!this.active || request !== this.request) return;
       this.faces = faces;
@@ -109,7 +172,7 @@ class FaceOutlineEditor {
       else this.message = 'No head found. Drag the points around the head and hair, or try a clearer photo.';
     } catch (error) {
       if (!this.active || request !== this.request) return;
-      this.message = 'Detection unavailable. You can still trace the head and hair by dragging points, or retry.';
+      this.message = ai ? `${error.message} You can still drag the points by hand.` : 'Detection unavailable. You can still trace the head and hair by dragging points, or retry.';
       console.warn('Head outline detection unavailable:', error.message);
     } finally {
       clearTimeout(timeout);
@@ -119,11 +182,14 @@ class FaceOutlineEditor {
 
   useFace() {
     this.remember();
+    const from = this.points;
     this.points = FaceCrop.copy(this.faces[this.faceIndex]);
     this.original = FaceCrop.copy(this.points);
     this.selected = -1;
-    this.message = this.faces.length > 1 ? 'Several heads found. Use the head button to choose, then fine tune.' : 'Head and hair outlined. Drag any point to fine tune the cut.';
+    this.message = this.method === 'ai' ? 'AI outlined the whole head. Drag any point to fine tune the cut.' : this.faces.length > 1 ? 'Several heads found. Use the head button to choose, then fine tune.' : 'Head and hair outlined. Drag any point to fine tune the cut.';
     this.fit();
+    // Frame the result first, then morph into it.
+    if (this.method === 'ai') this.reveal(from, FaceCrop.copy(this.points));
   }
 
   nextFace() {
@@ -176,6 +242,7 @@ class FaceOutlineEditor {
 
   pointerDown(event) {
     if (event.button !== 0) return;
+    this.finishMorph();
     event.preventDefault();
     const index = event.target.closest('[data-outline-point]')?.dataset.outlinePoint;
     this.selected = index == null ? -1 : Number(index);
@@ -251,8 +318,11 @@ class FaceOutlineEditor {
     const context = this.canvas.getContext('2d');
     context.scale(dpr, dpr);
     context.drawImage(this.image, this.pan.x, this.pan.y, this.image.naturalWidth * this.zoom, this.image.naturalHeight * this.zoom);
+    if (this.busy && this.method === 'ai') { context.fillStyle = '#10223540'; context.fillRect(0, 0, width, height); return; }
     const rect = FaceCrop.bounds(this.points);
-    const path = FaceCrop.path(FaceCrop.fromOutline(this.points), this.pan.x + rect.sx * this.zoom, this.pan.y + rect.sy * this.zoom, rect.sw * this.zoom, rect.sh * this.zoom);
+    // Mid-morph shapes can briefly cross themselves, so draw the morph frames as a raw polygon.
+    const path = this.morph ? FaceCrop.polygon(this.points, this.pan.x, this.pan.y, this.zoom)
+      : FaceCrop.path(FaceCrop.fromOutline(this.points), this.pan.x + rect.sx * this.zoom, this.pan.y + rect.sy * this.zoom, rect.sw * this.zoom, rect.sh * this.zoom);
     const shade = new Path2D(); shade.rect(0, 0, width, height); shade.addPath(path);
     context.fillStyle = '#102235b8'; context.fill(shade, 'evenodd');
     context.strokeStyle = '#ffcc6c'; context.lineWidth = 2; context.stroke(path);

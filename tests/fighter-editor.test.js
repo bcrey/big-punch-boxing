@@ -143,3 +143,20 @@ test('late detection cannot overwrite a manual change or a different fighter', a
   assert.equal(f.document.getElementById('ovalCropMode').getAttribute('aria-pressed'), 'true');
   assert.equal(f.document.querySelectorAll('.outline-point').length, 0);
 });
+
+test('AI cropping runs the AI tracer, saves an editable outline, and reports failures', async t => {
+  const f = await fixture(); t.after(() => f.dom.window.close());
+  f.window.testPoints = points;
+  f.eval('FaceCrop.detect = async () => { throw new Error("local detector must not run"); }; FaceCrop.detectAI = async () => [testPoints];');
+  f.click('aiCropMode'); await tick();
+  assert.equal(f.document.getElementById('aiCropMode').getAttribute('aria-pressed'), 'true');
+  assert.match(f.document.getElementById('outlineStatus').textContent, /AI outlined the whole head/);
+  assert.equal(f.document.getElementById('detectOutline').textContent, 'Redo AI crop');
+  assert.equal(f.eval('computeCropFromEditor().mode'), 'outline');
+  assert.equal(f.document.querySelectorAll('.outline-point').length, 6);
+
+  f.eval('FaceCrop.detectAI = async () => { throw new Error("AI cropping is not set up on the server yet."); };');
+  f.click('detectOutline'); await tick();
+  assert.match(f.document.getElementById('outlineStatus').textContent, /not set up.*drag the points by hand/);
+  assert.equal(f.document.querySelectorAll('.outline-point').length, 6, 'a failed retry keeps the previous outline');
+});
