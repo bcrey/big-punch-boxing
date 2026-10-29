@@ -1,0 +1,20 @@
+MediaPipe Tasks Vision 1.2.0
+Copyright Google LLC. Distributed under Apache License 2.0; see LICENSE.
+
+Runtime source (copied without modification):
+https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-1.2.0.tgz
+
+The application serves vision_bundle.mjs plus the SIMD and non-SIMD JS/WASM
+runtime pairs locally. Update the bundle and both pairs together.
+
+Selfie Multiclass model, float32, version 1
+(public/models/selfie_multiclass_256x256.tflite):
+https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/selfie_multiclass_256x256.tflite
+SHA-256: c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0
+
+API and model documentation:
+https://developers.google.com/edge/mediapipe/solutions/vision/image_segmenter/web_js
+
+Detection is loaded only when Custom outline is used. Inference runs on the
+client; no portrait is sent to Google for detection. Hair and facial skin are
+combined into a head silhouette; body skin and clothing are excluded.

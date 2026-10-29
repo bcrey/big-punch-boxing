@@ -1,0 +1,9 @@
+Paper Punch arena background
+Generated with the built-in image_gen tool on 2026-10-28.
+Production asset: public/assets/paper-arena.png
+The ring, UI, and animated fighters are drawn separately in code.
+
+Final prompt:
+Use case: stylized-concept. Asset type: production background layer for a 900 by 600 side-view boxing browser game, landscape 3:2.
+Create a richly tactile handmade cut-paper boxing arena BACKDROP ONLY, matching a premium paper collage game. Deep midnight navy and faded denim blue cardstock layers. Quiet shadowy gym architecture in upper half: simple high windows, rafters, two hanging industrial lamps at upper corners with soft warm ochre paper beams angled down inward. A lively but low contrast audience made of layered dark blue cutout silhouettes across the bottom half; crowd should occupy y=50% through y=85%, cropped off along the bottom. Small cream pennants at upper left and upper right. Subtle real fibrous paper grain, ragged torn edges, dimensional small shadows between collage layers, handmade craft detail. Warm cream and ochre light accents sparingly used. Center must remain uncluttered and dark blue for readable fighters placed in front later. Keep top 15% darker for health bar overlay. Entire picture fills canvas edge to edge.
+NO boxers, NO foreground figures, NO boxing ring, NO ropes, NO ring posts, NO mat, NO floor, NO words, NO letters, NO numbers, NO UI, NO logo, NO border frame. This is only the background behind a separately rendered game ring and animated characters, NOT a finished game screenshot. Full-bleed landscape image.

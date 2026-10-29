@@ -12,6 +12,9 @@ const healthHandler = require('./api/health');
 const MIME = {
   '.html': 'text/html',
   '.js': 'application/javascript',
+  '.mjs': 'application/javascript',
+  '.wasm': 'application/wasm',
+  '.svg': 'image/svg+xml',
   '.css': 'text/css',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
