@@ -34,7 +34,7 @@ async function fixture() {
   Object.defineProperty(window.HTMLElement.prototype, 'clientHeight', { get() { return this.id === 'cropArea' ? 252 : 500; } });
   window.HTMLElement.prototype.setPointerCapture = function () {};
   window.HTMLElement.prototype.hasPointerCapture = () => false;
-  for (const file of ['face-crop.js', 'head-outline.js', 'face-outline-editor.js', 'fighter-storage.js']) run(fs.readFileSync(require.resolve('../public/' + file), 'utf8'));
+  for (const file of ['face-crop.js', 'head-outline.js', 'face-outline-editor.js', 'camera-capture.js', 'fighter-storage.js']) run(fs.readFileSync(require.resolve('../public/' + file), 'utf8'));
   run('let netMode = "local", onlineConnected = false, previewBoxer1 = null, previewBoxer2 = null; function initPreviewBoxers() {}');
   run(rosterCode);
   const photo = createCanvas(100, 140), context = photo.getContext('2d');
@@ -159,4 +159,52 @@ test('AI cropping runs the AI tracer, saves an editable outline, and reports fai
   f.click('detectOutline'); await tick();
   assert.match(f.document.getElementById('outlineStatus').textContent, /not set up.*drag the points by hand/);
   assert.equal(f.document.querySelectorAll('.outline-point').length, 6, 'a failed retry keeps the previous outline');
+});
+
+test('Take photo opens a live viewfinder, stops the camera on close, and loads the captured shot', async t => {
+  const f = await fixture(); t.after(() => f.dom.window.close());
+  const stopped = [];
+  Object.defineProperty(f.window, 'isSecureContext', { value: true });
+  Object.defineProperty(f.window.navigator, 'mediaDevices', { value: {
+    getUserMedia: async constraints => {
+      f.window.lastConstraints = constraints;
+      return { getTracks: () => [{ stop: () => stopped.push(constraints.video.facingMode) }] };
+    },
+    enumerateDevices: async () => [{ kind: 'videoinput' }, { kind: 'videoinput' }]
+  } });
+  f.window.HTMLMediaElement.prototype.play = async () => {};
+  f.click('takePhotoButton'); await tick();
+  const view = f.document.querySelector('#cropStage .camera-view');
+  assert(view, 'viewfinder opens over the crop area');
+  assert.equal(f.window.lastConstraints.video.facingMode, 'user');
+  assert.equal(view.querySelector('.camera-shutter').disabled, false);
+  assert.equal(view.querySelector('.camera-flip').hidden, false, 'flip shows when there are two cameras');
+  view.querySelector('.camera-flip').click(); await tick();
+  assert.deepEqual(stopped, ['user']);
+  assert.equal(f.window.lastConstraints.video.facingMode, 'environment');
+  f.eval('drawCropPreview()');
+  assert(f.document.querySelector('.camera-view'), 'crop redraws must not remove the viewfinder');
+  view.querySelector('.camera-cancel').click(); await tick();
+  assert.equal(f.document.querySelector('.camera-view'), null);
+  assert.deepEqual(stopped, ['user', 'environment']);
+
+  f.window.navigator.mediaDevices.getUserMedia = async () => { throw Object.assign(new Error('denied'), { name: 'NotAllowedError' }); };
+  f.click('takePhotoButton'); await tick();
+  assert.equal(f.document.querySelector('.camera-view'), null);
+  assert.match(f.document.getElementById('fighterSaveStatus').textContent, /Camera access was blocked/);
+
+  const shot = f.eval('testFighter.imageData');
+  f.eval('CameraCapture.open = () => ({ done: Promise.resolve(testFighter.imageData), close() {} }); cropImg = null;');
+  f.click('takePhotoButton'); await tick(); await tick();
+  assert.equal(f.eval('cropImgData'), shot);
+  assert.equal(f.eval('computeCropFromEditor().sw > 0'), true);
+});
+
+test('Take photo falls back to the device camera picker without live camera support', async t => {
+  const f = await fixture(); t.after(() => f.dom.window.close());
+  let picked = false;
+  f.document.getElementById('managerCamera').click = () => { picked = true; };
+  f.click('takePhotoButton');
+  assert.equal(picked, true);
+  assert.equal(f.document.getElementById('managerCamera').getAttribute('capture'), 'user');
 });
