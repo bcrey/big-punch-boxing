@@ -18,6 +18,7 @@ async function fixture() {
   window.Path2D = Path2D;
   window.Image = Image;
   window.structuredClone = structuredClone;
+  window.PaperPunch = { drawBodyPreview() {} };
   window.indexedDB = new IDBFactory();
   window.fetch = async () => ({ ok: false, status: 404 });
   window.requestAnimationFrame = callback => setTimeout(callback, 0);
@@ -207,4 +208,44 @@ test('Take photo falls back to the device camera picker without live camera supp
   f.click('takePhotoButton');
   assert.equal(picked, true);
   assert.equal(f.document.getElementById('managerCamera').getAttribute('capture'), 'user');
+});
+
+test('outfits are chosen explicitly, survive recropping and storage, and reach both player slots', async t => {
+  const f = await fixture(); t.after(() => f.dom.window.close());
+  assert.equal(f.document.getElementById('classicBodyStyle').getAttribute('aria-pressed'), 'true', 'legacy fighters keep their outfit');
+  f.click('shirtBodyStyle');
+  f.window.testPoints = points;
+  f.eval('FaceCrop.detect = async () => [testPoints];');
+  f.click('outlineCropMode'); await tick();
+  await f.eval('saveFighter()');
+  f.eval('roster = [];');
+  await f.eval('loadRoster()');
+  assert.equal(f.eval('roster[0].bodyStyle'), 'shirt');
+  await f.eval('selectFighter(1, roster[0].id);');
+  await f.eval('selectFighter(2, roster[0].id);');
+  assert.equal(f.eval('bodyStyles[1]'), 'shirt');
+  assert.equal(f.eval('bodyStyles[2]'), 'shirt');
+  f.eval('renderEditor()'); await tick();
+  assert.equal(f.document.getElementById('shirtBodyStyle').getAttribute('aria-pressed'), 'true');
+  f.click('classicBodyStyle');
+  f.click('detectOutline'); await tick();
+  assert.equal(f.document.getElementById('classicBodyStyle').getAttribute('aria-pressed'), 'true', 'head scanning cannot override the outfit choice');
+  await f.eval('saveFighter()');
+  assert.equal(f.eval('roster[0].bodyStyle'), 'classic');
+});
+
+test('new fighters default to a shirt even without a photo, and API saves carry the outfit', async t => {
+  const f = await fixture(); t.after(() => f.dom.window.close());
+  f.eval('addNewFighter()');
+  assert.equal(f.document.getElementById('shirtBodyStyle').getAttribute('aria-pressed'), 'true');
+  let payload;
+  f.window.fetch = async (url, options) => { payload = JSON.parse(options.body); return { ok: true }; };
+  f.eval('rosterApiAvailable = true;');
+  await f.eval('saveFighter()');
+  assert.equal(payload.bodyStyle, 'shirt');
+  assert.equal(payload.imageData, null);
+  assert.equal(payload.crop, null);
+  f.window.fetch = async () => ({ ok: true, json: async () => [{ id: payload.id, name: 'Remote', body_style: 'shirt', crop: null, image_data: null }] });
+  await f.eval('loadRoster()');
+  assert.equal(f.eval('roster[0].bodyStyle'), 'shirt');
 });

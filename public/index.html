@@ -20,6 +20,7 @@
 <div id="gameShell">
   <div id="stageToolbar">
     <div class="club-brand"><span class="brand-star" aria-hidden="true">★</span><div>BAM BAM BOXING</div></div>
+    <button id="effectsToggle" class="audio-toggle effects-toggle" type="button" aria-pressed="true">Arcade FX: On</button>
     <button class="audio-toggle audio-toggle-stage hidden" type="button" data-audio-toggle aria-pressed="false" aria-label="Mute audio">
       <svg class="audio-icon audio-icon-on" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M3 10v4h4l5 4V6L7 10H3zm12.5 2a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 15.5 12zm0-9.5v2.06A9.5 9.5 0 0 1 20 12a9.5 9.5 0 0 1-4.5 8.44v2.06A11.5 11.5 0 0 0 22 12 11.5 11.5 0 0 0 15.5 2.5z"/>
@@ -166,10 +167,29 @@
 <script src="camera-capture.js"></script>
 <script src="fighter-storage.js"></script>
 <script src="paper-punch.js"></script>
+<script src="arcade-effects.js"></script>
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const W = 900, H = 600;
+const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+let arcadeEnabled = true;
+try { arcadeEnabled = localStorage.getItem('bamBamArcadeEffects') !== 'false'; } catch (_) {}
+const arcade = new ArcadeEffects({ enabled: arcadeEnabled, reducedMotion: motionPreference.matches });
+function updateEffectsPreference() {
+  arcade.configure(arcadeEnabled, motionPreference.matches);
+  const button = document.getElementById('effectsToggle');
+  button.textContent = 'Arcade FX: ' + (!arcadeEnabled ? 'Off' : motionPreference.matches ? 'Low motion' : 'On');
+  button.setAttribute('aria-pressed', String(arcadeEnabled));
+}
+document.getElementById('effectsToggle').onclick = () => {
+  arcadeEnabled = !arcadeEnabled;
+  try { localStorage.setItem('bamBamArcadeEffects', String(arcadeEnabled)); } catch (_) {}
+  particles = [];
+  updateEffectsPreference();
+};
+motionPreference.addEventListener('change', () => { particles = []; updateEffectsPreference(); });
+updateEffectsPreference();
 
 // Audio context for sound effects
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -489,8 +509,11 @@ let face2 = new Image();
 let facesLoaded = [false, false];
 let faceCrop1 = null;
 let faceCrop2 = null;
+const bodyStyles = { 1: 'classic', 2: 'classic' };
+const fighterSelectionVersions = { 1: 0, 2: 0 };
+const normalizeBodyStyle = value => value === 'shirt' ? 'shirt' : 'classic';
 
-// Roster stored as array of { id, name, imageData (dataURL), crop: {sx,sy,sw,sh} }
+// Outfit is a saved choice, independent of the portrait and crop detection.
 let roster = [];
 let selectedFighter1 = null; // roster id
 let selectedFighter2 = null;
@@ -520,7 +543,8 @@ async function loadRoster() {
         id: r.id,
         name: r.name,
         imageData: r.image_data,
-        crop: r.crop
+        crop: r.crop,
+        bodyStyle: normalizeBodyStyle(r.body_style)
       }));
       await FighterStorage.write(roster);
       rosterApiAvailable = true;
@@ -550,7 +574,8 @@ async function saveFighterToDb(fighter) {
         id: fighter.id,
         name: fighter.name,
         imageData: fighter.imageData,
-        crop: fighter.crop
+        crop: fighter.crop,
+        bodyStyle: normalizeBodyStyle(fighter.bodyStyle)
       })
     });
     return { localSaved, remoteSaved: response.ok };
@@ -599,14 +624,18 @@ async function selectFighter(slot, fighterId) {
         type: 'fighter-select',
         name: fighter.name,
         imageData: fighter.imageData || null,
-        crop: fighter.crop || null
+        crop: fighter.crop || null,
+        bodyStyle: normalizeBodyStyle(fighter.bodyStyle)
       });
     }
   }
 
+  bodyStyles[slot] = normalizeBodyStyle(fighter.bodyStyle);
+  const selectionVersion = ++fighterSelectionVersions[slot];
   if (slot === 1) {
     selectedFighter1 = fighterId;
     const img = await loadFighterImage(fighter);
+    if (selectionVersion !== fighterSelectionVersions[slot]) return;
     if (img) {
       face1 = img;
       facesLoaded[0] = true;
@@ -623,6 +652,7 @@ async function selectFighter(slot, fighterId) {
   } else {
     selectedFighter2 = fighterId;
     const img = await loadFighterImage(fighter);
+    if (selectionVersion !== fighterSelectionVersions[slot]) return;
     if (img) {
       face2 = img;
       facesLoaded[1] = true;
@@ -778,7 +808,7 @@ function renderRosterList() {
 }
 
 function addNewFighter() {
-  const fighter = { id: genId(), name: 'New Fighter', imageData: null, crop: null };
+  const fighter = { id: genId(), name: 'New Fighter', imageData: null, crop: null, bodyStyle: 'shirt' };
   roster.push(fighter);
   saveFighterToDb(fighter);
   editingFighterId = fighter.id;
@@ -817,6 +847,14 @@ function renderEditor() {
     <div class="editor-row">
       <label for="editorName">Name</label>
       <input type="text" id="editorName" placeholder="Fighter name">
+    </div>
+    <div class="editor-row outfit-row">
+      <span id="outfitLabel">Outfit</span>
+      <div class="outfit-switch" role="group" aria-labelledby="outfitLabel">
+        <button type="button" id="shirtBodyStyle" aria-pressed="false">Boxing shirt</button>
+        <button type="button" id="classicBodyStyle" aria-pressed="false">Classic trunks</button>
+      </div>
+      <canvas id="bodyStylePreview" width="96" height="96" aria-label="Selected outfit preview"></canvas>
     </div>
     <div class="crop-mode-switch" role="group" aria-label="Crop method">
       <button type="button" id="ovalCropMode" aria-pressed="true">Oval crop</button>
@@ -868,6 +906,17 @@ function renderEditor() {
   `;
 
   document.getElementById('editorName').value = fighter.name;
+  const setBodyStyle = value => {
+    const style = normalizeBodyStyle(value);
+    panel.dataset.bodyStyle = style;
+    document.getElementById('shirtBodyStyle').setAttribute('aria-pressed', String(style === 'shirt'));
+    document.getElementById('classicBodyStyle').setAttribute('aria-pressed', String(style === 'classic'));
+    PaperPunch.drawBodyPreview(document.getElementById('bodyStylePreview').getContext('2d'), style);
+    document.getElementById('fighterSaveStatus').textContent = '';
+  };
+  document.getElementById('shirtBodyStyle').onclick = () => setBodyStyle('shirt');
+  document.getElementById('classicBodyStyle').onclick = () => setBodyStyle('classic');
+  setBodyStyle(fighter.bodyStyle);
   document.getElementById('editorName').addEventListener('input', (e) => {
     document.getElementById('fighterSaveStatus').textContent = '';
   });
@@ -1130,6 +1179,7 @@ async function saveFighter() {
   if (!fighter) return;
   const nameInput = document.getElementById('editorName');
   if (nameInput) fighter.name = nameInput.value || 'Unnamed';
+  fighter.bodyStyle = normalizeBodyStyle(document.getElementById('editorPanel').dataset.bodyStyle);
   if (cropImgData) {
     fighter.imageData = cropImgData;
     fighter.crop = computeCropFromEditor();
@@ -1147,8 +1197,10 @@ async function saveFighter() {
   renderRosterList();
 
   // Update active game faces if this fighter is selected
-  if (selectedFighter1 === fighter.id) selectFighter(1, fighter.id);
-  if (selectedFighter2 === fighter.id) selectFighter(2, fighter.id);
+  await Promise.all([
+    selectedFighter1 === fighter.id ? selectFighter(1, fighter.id) : null,
+    selectedFighter2 === fighter.id ? selectFighter(2, fighter.id) : null
+  ]);
 }
 
 // ============ INIT ROSTER ============
@@ -1183,11 +1235,11 @@ async function seedDefaults() {
         const dataURL = c.toDataURL('image/jpeg', 0.85);
         const crop = detectFaceCrop(img);
         const name = idx === 0 ? 'Fighter 1' : 'Fighter 2';
-        roster.push({ id: genId(), name, imageData: dataURL, crop });
+        roster.push({ id: genId(), name, imageData: dataURL, crop, bodyStyle: 'shirt' });
         done();
       };
       img.onerror = () => {
-        roster.push({ id: genId(), name: 'Fighter ' + (idx+1), imageData: null, crop: null });
+        roster.push({ id: genId(), name: 'Fighter ' + (idx+1), imageData: null, crop: null, bodyStyle: 'shirt' });
         done();
       };
       img.src = src;
@@ -1240,10 +1292,10 @@ let gameTime = 0;
 let round = 1;
 let roundTimer = 0;
 const ROUND_TIME = 60;
-let shakeX = 0, shakeY = 0;
 let particles = [];
 let bigTextStr = '';
 let bigTextTimer = 0;
+let bigTextDuration = 0;
 let countdownActive = false;
 let koWinner = 0; // 0 = none, 1 = p1 wins, 2 = p2 wins
 let koTimer = 0;
@@ -1417,10 +1469,6 @@ class Boxer {
     this.state = 'hit';
     this.stateTimer = 0;
     playSound('hit');
-
-    // Screen shake
-    shakeX = dir * 8;
-    shakeY = (Math.random() - 0.5) * 6;
 
     // Particles
     spawnParticles(this.x + dir * 20, this.bodyY - 70, '#ff4444', 8, 4);
@@ -1624,12 +1672,12 @@ class Boxer {
   draw(ctx) {
     const image = this.playerNum === 1 ? face1 : face2;
     const crop = this.playerNum === 1 ? faceCrop1 : faceCrop2;
-    PaperPunch.drawBoxer(ctx, this, image, crop);
+    PaperPunch.drawBoxer(ctx, this, image, crop, bodyStyles[this.playerNum]);
   }
 }
 
 function spawnParticles(x, y, color, count, speed) {
-  if (suppressEffects) return;
+  if (suppressEffects || !arcade.enabled || arcade.reducedMotion) return;
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
     const spd = (Math.random() * 0.5 + 0.5) * speed;
@@ -1643,6 +1691,7 @@ function spawnParticles(x, y, color, count, speed) {
       color
     });
   }
+  particles = particles.slice(-160);
 }
 
 // Color schemes
@@ -1718,12 +1767,11 @@ function checkHits() {
     p1.punchLanded = true;
     const dmg = p1Hit.isUppercut ? (12 + Math.random() * 5) : (2 + Math.random() * 2);
     const landed = p2.takeHit(dmg, p1.facing, p1Hit.isUppercut);
+    if (!suppressEffects) arcade.impact([p1, p2], p2, p1Hit.isUppercut, !landed);
     if (landed) {
       p1.comboCount++;
       p1.comboTimer = 30;
-      if (p1.comboCount >= 3) {
-        showBigText('COMBO x' + p1.comboCount + '!');
-      }
+      if (!suppressEffects) arcade.combo(1, p1.comboCount);
     }
   }
 
@@ -1734,12 +1782,11 @@ function checkHits() {
     p2.punchLanded = true;
     const dmg = p2Hit.isUppercut ? (12 + Math.random() * 5) : (2 + Math.random() * 2);
     const landed = p1.takeHit(dmg, p2.facing, p2Hit.isUppercut);
+    if (!suppressEffects) arcade.impact([p1, p2], p1, p2Hit.isUppercut, !landed);
     if (landed) {
       p2.comboCount++;
       p2.comboTimer = 30;
-      if (p2.comboCount >= 3) {
-        showBigText('COMBO x' + p2.comboCount + '!');
-      }
+      if (!suppressEffects) arcade.combo(2, p2.comboCount);
     }
   }
 
@@ -1761,6 +1808,7 @@ function rectsOverlap(a, b) {
 function showBigText(text, duration = 60) {
   bigTextStr = text;
   bigTextTimer = duration;
+  bigTextDuration = duration;
 }
 
 // Ensure boxers face each other
@@ -1794,23 +1842,25 @@ function drawBackground() {
   PaperPunch.drawArena(ctx, W, H);
 }
 
-function drawParticles() {
+function drawParticles(dt) {
   particles.forEach(p => {
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vy += 0.15;
-    p.life -= p.decay;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 0.15 * dt;
+    p.life -= p.decay * dt;
     if (p.life > 0) PaperPunch.drawConfetti(ctx, p);
   });
   particles = particles.filter(p => p.life > 0);
 }
 
-function drawBigText() {
+function drawBigText(dt) {
   if (bigTextTimer > 0) {
-    bigTextTimer--;
-    const scale = bigTextTimer > 50 ? 1 + (60 - bigTextTimer) * 0.05 : 1.5;
-    const alpha = bigTextTimer > 50 ? (60 - bigTextTimer) / 10 : bigTextTimer / 50;
-    PaperPunch.drawAnnouncement(ctx, bigTextStr, scale, alpha, W, H);
+    bigTextTimer = Math.max(0, bigTextTimer - dt);
+    const age = bigTextDuration - bigTextTimer;
+    const scale = arcade.reducedMotion || !arcade.enabled ? 1.2 : 1 + Math.min(age / 10, 1) * .35;
+    const alpha = Math.max(0, Math.min(1, age / 6, bigTextTimer / 15));
+    const resultBanner = koWinner && (bigTextStr.includes('K.O.') || bigTextStr.endsWith(' WINS!'));
+    PaperPunch.drawAnnouncement(ctx, bigTextStr, scale, alpha, W, H, resultBanner ? { y: 142, height: 50, fontSize: 34 } : {});
   }
 }
 
@@ -1844,79 +1894,94 @@ function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Main game loop
-let lastTime = 0;
+// Combat advances at 60 Hz in both modes. Effects use a separate display clock.
+let lastTime = null;
+let localAccumulator = 0;
+function simulateLocalFrame() {
+  if (countdownActive) return;
+  handleInput();
+  if (koWinner) { p1.vx = 0; p2.vx = 0; }
+  p1.update(1);
+  p2.update(1);
+  updateFacing();
+  separateBoxers();
+  checkHits();
+
+  if (koWinner) {
+    koTimer++;
+    if (koTimer === 90) {
+      showBigText('K.O.!!', 60);
+      playSound('bell');
+    }
+    if (koTimer === 160) {
+      const winnerName = document.getElementById('p' + koWinner + 'Name').textContent;
+      showBigText(winnerName + ' WINS!', 100);
+    }
+    if (koTimer === 280) {
+      round++;
+      arcade.reset();
+      particles = [];
+      if (round > 3) {
+        round = 1;
+        gameRunning = false;
+        renderFighterSelects();
+        initPreviewBoxers();
+        startChooseMusic();
+        document.getElementById('overlay').classList.remove('hidden');
+      } else {
+        p1.reset();
+        p2.reset();
+        koWinner = 0;
+        startCountdown();
+      }
+    }
+  }
+}
+
 function gameLoop(timestamp) {
+  const elapsed = lastTime === null ? 0 : Math.max(0, Math.min(timestamp - lastTime, 50));
+  lastTime = timestamp;
   if (netMode === 'online') {
+    localAccumulator = 0;
     if (gameRunning && rollbackEngine) {
-      const elapsed = timestamp - lastTime;
-      lastTime = timestamp;
-      netAccumulator += Math.min(elapsed, 50);
+      netAccumulator += elapsed;
       while (netAccumulator >= SIM_DT && gameRunning) {
         rollbackEngine.advance();
         netAccumulator -= SIM_DT;
       }
-    } else {
-      lastTime = timestamp;
     }
-  } else {
-    const dt = Math.min((timestamp - lastTime) / 16.67, 3);
-    lastTime = timestamp;
-
-    handleInput();
-
-    if (gameRunning) {
-      p1.update(dt);
-      p2.update(dt);
-      updateFacing();
-      separateBoxers();
-      checkHits();
-
-      // KO handling
-      if (koWinner) {
-        koTimer++;
-        if (koTimer === 30) {
-          showBigText('K.O.!!', 90);
-          playSound('bell');
-        }
-        if (koTimer === 120) {
-          const winnerName = koWinner === 1 ? 'PLAYER 1' : 'PLAYER 2';
-          showBigText(winnerName + ' WINS!', 120);
-        }
-        if (koTimer === 280) {
-          round++;
-          if (round > 3) {
-            round = 1;
-            gameRunning = false;
-            renderFighterSelects();
-            initPreviewBoxers();
-            startChooseMusic();
-            document.getElementById('overlay').classList.remove('hidden');
-          } else {
-            p1.reset();
-            p2.reset();
-            koWinner = 0;
-            startCountdown();
-          }
-        }
-      }
-
-      shakeX *= 0.85;
-      shakeY *= 0.85;
+  } else if (gameRunning) {
+    localAccumulator += elapsed;
+    while (localAccumulator >= SIM_DT && gameRunning) {
+      simulateLocalFrame();
+      localAccumulator -= SIM_DT;
     }
-  }
+  } else localAccumulator = 0;
 
-  // Draw
+  if (gameRunning && koWinner) arcade.observeKnockout(round + ':' + koWinner, koWinner === 1 ? 2 : 1, [p1, p2]);
+  else if (arcade.koKey !== null) arcade.cancelKnockout();
+  arcade.update(elapsed);
+  const camera = arcade.camera();
+  // Fill the margins exposed by the brief camera movement.
+  ctx.fillStyle = '#142638'; ctx.fillRect(0, 0, W, H);
   ctx.save();
-  ctx.translate(shakeX, shakeY);
+  ctx.translate(W / 2 + camera.x, H / 2 + camera.y);
+  ctx.scale(camera.zoom, camera.zoom);
+  ctx.translate(-W / 2, -H / 2);
   drawBackground();
-  if (p1.x < p2.x) { p1.draw(ctx); p2.draw(ctx); }
-  else { p2.draw(ctx); p1.draw(ctx); }
-  drawParticles();
-  drawBigText();
+  arcade.drawBehind(ctx);
+  const poses = arcade.poses([p1, p2]).slice().sort((a, b) => a.x - b.x);
+  for (const boxer of poses) {
+    const image = boxer.playerNum === 1 ? face1 : face2;
+    const crop = boxer.playerNum === 1 ? faceCrop1 : faceCrop2;
+    PaperPunch.drawBoxer(ctx, boxer, image, crop, bodyStyles[boxer.playerNum]);
+  }
+  drawParticles(elapsed / SIM_DT);
+  arcade.drawForeground(ctx);
   ctx.restore();
+  arcade.drawHud(ctx);
+  drawBigText(elapsed / SIM_DT);
   updateUI();
-
   requestAnimationFrame(gameLoop);
 }
 
@@ -2064,6 +2129,9 @@ document.getElementById('startBtn').addEventListener('click', () => {
     gameRunning = true;
     round = 1;
     koWinner = 0;
+    koTimer = 0;
+    localAccumulator = 0;
+    arcade.reset(); particles = [];
     p1.reset();
     p2.reset();
     startCountdown();
@@ -2141,7 +2209,6 @@ function saveGameState() {
     p1: p1.saveState(),
     p2: p2.saveState(),
     gameTime, koWinner, koTimer, round,
-    shakeX, shakeY,
     rngState: rng.state,
     netCountdown,
   };
@@ -2154,8 +2221,6 @@ function loadGameState(s) {
   koWinner = s.koWinner;
   koTimer = s.koTimer;
   round = s.round;
-  shakeX = s.shakeX;
-  shakeY = s.shakeY;
   rng.state = s.rngState;
   netCountdown = s.netCountdown;
 }
@@ -2168,10 +2233,11 @@ function checkHitsOnline() {
     p1.punchLanded = true;
     const dmg = p1Hit.isUppercut ? (12 + rng.range(0, 5)) : (2 + rng.range(0, 2));
     const landed = p2.takeHit(dmg, p1.facing, p1Hit.isUppercut);
+    if (!suppressEffects) arcade.impact([p1, p2], p2, p1Hit.isUppercut, !landed);
     if (landed) {
       p1.comboCount++;
       p1.comboTimer = 30;
-      if (p1.comboCount >= 3 && !suppressEffects) showBigText('COMBO x' + p1.comboCount + '!');
+      if (!suppressEffects) arcade.combo(1, p1.comboCount);
     }
   }
   const p2Hit = p2.getPunchHitbox();
@@ -2180,10 +2246,11 @@ function checkHitsOnline() {
     p2.punchLanded = true;
     const dmg = p2Hit.isUppercut ? (12 + rng.range(0, 5)) : (2 + rng.range(0, 2));
     const landed = p1.takeHit(dmg, p2.facing, p2Hit.isUppercut);
+    if (!suppressEffects) arcade.impact([p1, p2], p1, p2Hit.isUppercut, !landed);
     if (landed) {
       p2.comboCount++;
       p2.comboTimer = 30;
-      if (p2.comboCount >= 3 && !suppressEffects) showBigText('COMBO x' + p2.comboCount + '!');
+      if (!suppressEffects) arcade.combo(2, p2.comboCount);
     }
   }
   if (p1.state === 'ko' && !koWinner) { koWinner = 2; koTimer = 0; }
@@ -2205,8 +2272,12 @@ function simulateOneFrame(p1Input, p2Input) {
     return;
   }
 
-  applyInputToBoxer(p1, p1Input);
-  applyInputToBoxer(p2, p2Input);
+  if (!koWinner) {
+    applyInputToBoxer(p1, p1Input);
+    applyInputToBoxer(p2, p2Input);
+  } else {
+    p1.vx = 0; p2.vx = 0;
+  }
 
   p1.update(1);
   p2.update(1);
@@ -2217,12 +2288,12 @@ function simulateOneFrame(p1Input, p2Input) {
   if (koWinner) {
     koTimer++;
     if (!suppressEffects) {
-      if (koTimer === 30) { showBigText('K.O.!!', 90); playSound('bell'); }
-      if (koTimer === 120) {
+      if (koTimer === 90) { showBigText('K.O.!!', 60); playSound('bell'); }
+      if (koTimer === 160) {
         const name = koWinner === 1 ?
           document.getElementById('p1Name').textContent :
           document.getElementById('p2Name').textContent;
-        showBigText(name + ' WINS!', 120);
+        showBigText(name + ' WINS!', 100);
       }
     }
     if (koTimer === 280) {
@@ -2236,12 +2307,11 @@ function simulateOneFrame(p1Input, p2Input) {
         p2.reset();
         koWinner = 0;
         netCountdown = 180;
+        if (!suppressEffects) { arcade.reset(); particles = []; }
       }
     }
   }
 
-  shakeX *= 0.85;
-  shakeY *= 0.85;
   gameTime++;
 }
 
@@ -2433,7 +2503,8 @@ function setupDataConnection() {
         type: 'fighter-select',
         name: myFighter.name,
         imageData: myFighter.imageData || null,
-        crop: myFighter.crop || null
+        crop: myFighter.crop || null,
+        bodyStyle: normalizeBodyStyle(myFighter.bodyStyle)
       });
     }
   });
@@ -2448,12 +2519,15 @@ function setupDataConnection() {
     } else if (data.type === 'fighter-select') {
       // Remote player changed their fighter — update name, label, and face image
       const oppSlot = isHost ? 2 : 1;
+      bodyStyles[oppSlot] = normalizeBodyStyle(data.bodyStyle);
+      const selectionVersion = ++fighterSelectionVersions[oppSlot];
       document.getElementById('selectLabel' + oppSlot).textContent = data.name + ' (OPPONENT)';
       document.getElementById('p' + oppSlot + 'Name').textContent = data.name;
       // Load the opponent's face image
       if (data.imageData) {
         const img = new Image();
         img.onload = () => {
+          if (selectionVersion !== fighterSelectionVersions[oppSlot]) return;
           if (oppSlot === 1) {
             face1 = img;
             facesLoaded[0] = true;
@@ -2468,6 +2542,10 @@ function setupDataConnection() {
           if (oppSlot === 2 && previewBoxer2) previewBoxer2.playerNum = 2;
         };
         img.src = data.imageData;
+      } else if (oppSlot === 1) {
+        face1 = new Image(); facesLoaded[0] = false; faceCrop1 = null;
+      } else {
+        face2 = new Image(); facesLoaded[1] = false; faceCrop2 = null;
       }
     } else if (data.type === 'ready') {
       remoteReady = true;
@@ -2537,9 +2615,8 @@ function startOnlineMatch() {
   netCountdown = 180;
   netAccumulator = 0;
   gameTime = 0;
-  shakeX = 0;
-  shakeY = 0;
   particles = [];
+  arcade.reset();
 
   p1.reset();
   p2.reset();
@@ -2572,6 +2649,7 @@ function startOnlineMatch() {
 
 function endOnlineMatch() {
   gameRunning = false;
+  arcade.reset(); particles = [];
   netMode = 'local';
   round = 1;
   onlineConnected = false;
@@ -2632,6 +2710,8 @@ function resetFighterLabels() {
   // Restore default labels and re-render roster pickers for both slots
   const f1 = roster.find(f => f.id === selectedFighter1);
   const f2 = roster.find(f => f.id === selectedFighter2);
+  if (f1) selectFighter(1, f1.id);
+  if (f2) selectFighter(2, f2.id);
   document.getElementById('selectLabel1').textContent = f1 ? f1.name : 'Fighter 1';
   document.getElementById('selectLabel2').textContent = f2 ? f2.name : 'Fighter 2';
   renderFighterSelects();

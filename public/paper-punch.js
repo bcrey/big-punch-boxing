@@ -129,11 +129,12 @@ const PaperPunch = (() => {
   }
   function drawArm(c,b,bx,by,which,skin) {
     const f=b.facing, lead=which==='lead';
-    const baseX=bx+(lead?f*25:f*10),baseY=by+(lead?-58:-48);
+    const victory=b.celebration, pose=victory?.[which];
+    const baseX=bx+f*(lead?25:victory?.rearShoulder??10),baseY=by+(lead?-58:-48);
     const extend=(lead?b.leadArmExtend:b.rearArmExtend)||0;
-    const gx=bx+f*(lead?50:35)+f*extend*(lead?70:65)+(lead?b.leadWindupX||0:0);
-    const gy=by+(lead?-78:-35)+(b.state==='blocking'?(lead?-20:-45):0)+(lead?b.leadWindupY||0:b.uppercutArmY||0);
-    const ex=baseX+(gx-baseX)*.4,ey=baseY+(gy-baseY)*.5+8;
+    const gx=pose?bx+f*pose.x:bx+f*(lead?50:35)+f*extend*(lead?70:65)+(lead?b.leadWindupX||0:0);
+    const gy=pose?by+pose.y:by+(lead?-78:-35)+(b.state==='blocking'?(lead?-20:-45):0)+(lead?b.leadWindupY||0:b.uppercutArmY||0);
+    const ex=pose?bx+f*pose.elbowX:baseX+(gx-baseX)*.4,ey=pose?by+pose.elbowY:baseY+(gy-baseY)*.5+8;
     limb(c,[[baseX,baseY],[ex,ey],[gx,gy]],skin.base,lead?17:16);
     line(c,[[baseX-2,baseY],[ex-2,ey-1]],skin.light,4);
     const charged=!lead && b.state==='winding' && b.stateTimer>=30;
@@ -156,9 +157,38 @@ const PaperPunch = (() => {
     line(c,[[-size*.7,size*.25],[-size*.3,size*.33],[-size*.2,size*.65]],b.color.dark,1.4);
     c.restore();
   }
-  function drawStanding(c,b,image,crop,bx,by) {
+  function drawTorso(c,b,skin,bodyStyle) {
+    const torso=polygon([[-20,-37],[-31,-30],[-35,-12],[-27,16],[-24,33],[25,33],[29,12],[34,-17],[26,-32],[15,-38]]);
+    if(bodyStyle==='shirt') {
+      paper(c,torso,b.color.main,4);
+      paper(c,polygon([[10,-33],[26,-29],[30,-15],[23,27],[13,32],[17,2]]),b.color.dark,0);
+      paper(c,polygon([[-24,-26],[-29,-15],[-21,26],[-13,28],[-17,-8]]),b.color.light,0);
+      const neck=new Path2D(); neck.moveTo(-14,-39); neck.lineTo(14,-39);
+      neck.quadraticCurveTo(12,-22,0,-22); neck.quadraticCurveTo(-12,-23,-14,-39);
+      paper(c,neck,skin.base,0);
+      line(c,[[-14,-36],[-10,-27],[0,-23],[10,-27],[14,-36]],PAPER,3);
+      line(c,[[-28,-28],[-30,-18],[-26,-9]],PAPER,3);
+      line(c,[[27,-28],[29,-18],[26,-9]],PAPER,3);
+      paper(c,starPath(0,6,11),PAPER,0);
+      line(c,[[-23,28],[23,28]],PAPER,2);
+    } else {
+      paper(c,torso,skin.base,4);
+      paper(c,polygon([[-19,-30],[-27,-17],[-24,-7],[-2,-5],[-1,-26]]),skin.light,0);
+      paper(c,polygon([[3,-27],[22,-28],[28,-14],[23,-5],[3,-7]]),skin.light,0);
+      line(c,[[-2,-2],[-2,19]],skin.dark,1.4);
+      line(c,[[-19,8],[-7,10]],skin.dark,1.3); line(c,[[7,10],[19,8]],skin.dark,1.3);
+    }
+  }
+  function drawBodyPreview(c,bodyStyle) {
+    c.clearRect(0,0,c.canvas.width,c.canvas.height);
+    c.save(); c.translate(c.canvas.width/2,c.canvas.height/2);
+    c.scale(c.canvas.width/90,c.canvas.height/90);
+    drawTorso(c,{color:{main:'#31658e',light:'#5e87a2',dark:'#24455f'}},skinFor(null),bodyStyle);
+    c.restore();
+  }
+  function drawStanding(c,b,image,crop,bx,by,bodyStyle) {
     const f=b.facing,skin=skinFor(image,crop);
-    const walk=Math.abs(b.vx)>0?Math.sin(b.bobTimer*.5)*10:0;
+    const walk=b.celebration?.step??(Math.abs(b.vx)>0?Math.sin(b.bobTimer*.5)*10:0);
     [-1,1].forEach(side=>{
       const x=bx+side*19, y=by+51+walk*side;
       limb(c,[[bx+side*17,by+16],[x+side*5,by+37],[x+side*8,y]],skin.base,17);
@@ -168,11 +198,7 @@ const PaperPunch = (() => {
     });
     c.save(); c.translate(bx,by); c.rotate(f*-(b.leanAmount||0)*.45); c.translate(-bx,-by);
     c.save(); c.translate(bx,by-33); c.scale(1/b.bodySquash,b.bodySquash);
-    paper(c,polygon([[-20,-37],[-31,-30],[-35,-12],[-27,16],[-24,33],[25,33],[29,12],[34,-17],[26,-32],[15,-38]]),skin.base,4);
-    paper(c,polygon([[-19,-30],[-27,-17],[-24,-7],[-2,-5],[-1,-26]]),skin.light,0);
-    paper(c,polygon([[3,-27],[22,-28],[28,-14],[23,-5],[3,-7]]),skin.light,0);
-    line(c,[[-2,-2],[-2,19]],skin.dark,1.4);
-    line(c,[[-19,8],[-7,10]],skin.dark,1.3); line(c,[[7,10],[19,8]],skin.dark,1.3);
+    drawTorso(c,b,skin,bodyStyle);
     c.restore();
     paper(c,polygon([[bx-27,by-6],[bx+27,by-6],[bx+33,by+25],[bx+5,by+28],[bx,by+17],[bx-6,by+28],[bx-34,by+24]]),b.color.shorts,4);
     paper(c,polygon([[bx-28,by-7],[bx+28,by-7],[bx+29,by+1],[bx-29,by+1]]),PAPER,0);
@@ -182,15 +208,19 @@ const PaperPunch = (() => {
     drawArm(c,b,bx,by,'rear',skin); drawArm(c,b,bx,by,'lead',skin);
     c.restore();
   }
-  function drawBoxer(c,b,image,crop) {
+  function drawBoxer(c,b,image,crop,bodyStyle='classic') {
     const bx=b.bodyX,by=b.bodyY;
-    c.save(); c.fillStyle='#19283733'; c.fill(ellipse(bx,by+66,48,9));
+    const victory=b.celebration;
+    c.save(); c.fillStyle='#19283733'; c.fill(ellipse(bx,victory?.groundY??by+66,48-(victory?.jump||0)*.35,9));
+    if(victory?.tilt) {
+      c.translate(bx,victory.groundY); c.rotate(victory.tilt); c.translate(-bx,-victory.groundY);
+    }
     if(b.state==='ko' && b.koY>80) {
       const reach = (68 + 126 / (crop?.ovalRatio || 63/78)) * .73 + 10;
       const fallenX = b.facing > 0 ? Math.max(bx, reach) : Math.min(bx, 900 - reach);
       c.translate(fallenX,by+46); c.rotate(b.facing*-Math.PI*.46); c.scale(.73,.73);
-      drawStanding(c,{...b,headY:0,headRot:0,leanAmount:0},image,crop,0,0);
-    } else drawStanding(c,b,image,crop,bx,by);
+      drawStanding(c,{...b,headY:0,headRot:0,leanAmount:0},image,crop,0,0,bodyStyle);
+    } else drawStanding(c,b,image,crop,bx,by,bodyStyle);
     c.restore();
   }
 
@@ -240,12 +270,12 @@ const PaperPunch = (() => {
     c.fillStyle=colors[Math.abs(Math.round(p.vx*10))%colors.length];
     c.fillRect(-p.size/2,-p.size/3,p.size,p.size*.65); c.restore();
   }
-  function drawAnnouncement(c,text,scale,alpha,w,h) {
-    c.save(); c.translate(w/2,h/2-28); c.rotate(-.045); c.scale(scale,scale); c.globalAlpha=Math.min(1,alpha);
-    c.font='bold 46px Impact, Arial Black, sans-serif'; c.textAlign='center'; c.textBaseline='middle';
-    const width=Math.min(w/scale-32,c.measureText(text).width+46),height=72;
+  function drawAnnouncement(c,text,scale,alpha,w,h,{y=h/2-28,height=72,fontSize=46}={}) {
+    c.save(); c.translate(w/2,y); c.rotate(-.045); c.scale(scale,scale); c.globalAlpha=Math.min(1,alpha);
+    c.font=`bold ${fontSize}px Impact, Arial Black, sans-serif`; c.textAlign='center'; c.textBaseline='middle';
+    const width=Math.min(w/scale-32,c.measureText(text).width+46);
     paper(c,polygon([[-width/2,-height/2],[-width*.1,-height/2+2],[width/2,-height/2-2],[width/2-3,height/2],[0,height/2-1],[-width/2+2,height/2+2]]),PAPER,1);
     c.fillStyle=text.includes('K.O')?'#bb3d36':INK; c.fillText(text,0,2,width-28); c.restore();
   }
-  return {drawBoxer,drawArena,drawConfetti,drawAnnouncement};
+  return {drawBoxer,drawBodyPreview,drawArena,drawConfetti,drawAnnouncement};
 })();

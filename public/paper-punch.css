@@ -11,6 +11,7 @@ button:focus-visible, [role=button]:focus-visible, input:focus-visible { outline
 #stageToolbar { width:100%; height:42px; display:flex; align-items:center; justify-content:space-between; }
 .club-brand { display:flex; align-items:center; gap:10px; color:var(--paper); font-family:Impact,'Arial Black',sans-serif; letter-spacing:1.5px; font-size:17px; }
 .club-brand .brand-star { font-size:28px; color:var(--red); transform:rotate(-12deg); }
+.effects-toggle { margin-left:auto; margin-right:12px; font:10px 'Courier New',monospace; text-transform:uppercase; }
 #gameContainer { position:relative; width:900px; height:600px; box-shadow:0 12px 0 #070f1770,0 22px 60px #0005; outline:1px solid #e6cd9b55; outline-offset:6px; }
 canvas { display:block; }
 #gameCanvas { width:900px; height:600px; }
@@ -101,6 +102,12 @@ canvas { display:block; }
 .editor-row { display:flex; width:100%; align-items:center; gap:10px; }
 .editor-row label { width:50px; font:12px 'Courier New',monospace; }
 .editor-row input { flex:1; min-width:0; padding:8px 10px; color:var(--ink); background:var(--paper); border:1px solid #a58e6b; }
+.outfit-row { min-height:48px; }
+#outfitLabel { width:50px; font:12px 'Courier New',monospace; }
+.outfit-switch { display:flex; border:1px solid var(--ink); }
+.outfit-switch button { padding:6px 12px; border:0; color:var(--ink); background:transparent; font:12px Arial,sans-serif; }
+.outfit-switch button[aria-pressed="true"] { background:var(--ink); color:var(--paper); }
+#bodyStylePreview { width:48px; height:48px; margin-left:auto; }
 .crop-area { position:relative; width:252px; height:252px; flex-shrink:0; background:#142638; overflow:hidden; cursor:move; touch-action:none; }
 .crop-area img { position:absolute; pointer-events:none; user-select:none; }
 .crop-oval { position:absolute; border:3px solid var(--paper); border-radius:50%; pointer-events:none; box-shadow:0 0 0 2000px #101d2bb3; }

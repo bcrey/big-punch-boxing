@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const { ensureFighterTable } = require('../../lib/fighter-schema');
 
 let pool = null;
 
@@ -23,10 +24,13 @@ module.exports = async function handler(req, res) {
   const p = getPool();
   try {
     if (req.method === 'PUT') {
-      const { name, imageData, crop } = req.body;
+      await ensureFighterTable(p);
+      const { name, imageData, crop, bodyStyle } = req.body;
       await p.query(
-        `UPDATE fighters SET name = $1, image_data = $2, crop = $3, updated_at = NOW() WHERE id = $4`,
-        [name || 'New Fighter', imageData || null, crop ? JSON.stringify(crop) : null, id]
+        `UPDATE fighters SET name = $1, image_data = $2, crop = $3,
+           body_style = COALESCE($5, body_style), updated_at = NOW() WHERE id = $4`,
+        [name || 'New Fighter', imageData || null, crop ? JSON.stringify(crop) : null, id,
+          ['shirt', 'classic'].includes(bodyStyle) ? bodyStyle : null]
       );
       res.status(200).json({ ok: true });
     } else if (req.method === 'DELETE') {
