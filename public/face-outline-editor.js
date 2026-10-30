@@ -237,7 +237,9 @@ class FaceOutlineEditor {
 
   position(event) {
     const rect = this.area.getBoundingClientRect();
-    return { x: (event.clientX - rect.left - this.pan.x) / this.zoom, y: (event.clientY - rect.top - this.pan.y) / this.zoom };
+    // The stage is CSS-scaled to the window, so screen pixels differ from the area's own pixels.
+    const scale = rect.width / this.area.clientWidth || 1;
+    return { x: ((event.clientX - rect.left) / scale - this.pan.x) / this.zoom, y: ((event.clientY - rect.top) / scale - this.pan.y) / this.zoom };
   }
 
   pointerDown(event) {
@@ -250,7 +252,7 @@ class FaceOutlineEditor {
       this.cancelDetection();
       event.target.focus();
     }
-    this.drag = { x: event.clientX, y: event.clientY, pan: { ...this.pan }, point: this.selected };
+    this.drag = { x: event.clientX, y: event.clientY, pan: { ...this.pan }, point: this.selected, scale: this.area.getBoundingClientRect().width / this.area.clientWidth || 1 };
     this.area.setPointerCapture(event.pointerId);
     this.update();
   }
@@ -268,7 +270,7 @@ class FaceOutlineEditor {
         this.points = points;
       }
     } else {
-      this.pan = { x: this.drag.pan.x + event.clientX - this.drag.x, y: this.drag.pan.y + event.clientY - this.drag.y };
+      this.pan = { x: this.drag.pan.x + (event.clientX - this.drag.x) / this.drag.scale, y: this.drag.pan.y + (event.clientY - this.drag.y) / this.drag.scale };
     }
     this.update();
   }

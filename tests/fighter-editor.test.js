@@ -35,7 +35,7 @@ async function fixture() {
   Object.defineProperty(window.HTMLElement.prototype, 'clientHeight', { get() { return this.id === 'cropArea' ? 252 : 500; } });
   window.HTMLElement.prototype.setPointerCapture = function () {};
   window.HTMLElement.prototype.hasPointerCapture = () => false;
-  for (const file of ['face-crop.js', 'head-outline.js', 'face-outline-editor.js', 'camera-capture.js', 'fighter-storage.js']) run(fs.readFileSync(require.resolve('../public/' + file), 'utf8'));
+  for (const file of ['face-crop.js', 'head-outline.js', 'face-outline-editor.js', 'camera-capture.js', 'fighter-storage.js', 'account.js']) run(fs.readFileSync(require.resolve('../public/' + file), 'utf8'));
   run('let netMode = "local", onlineConnected = false, previewBoxer1 = null, previewBoxer2 = null; function initPreviewBoxers() {}');
   run(rosterCode);
   const photo = createCanvas(100, 140), context = photo.getContext('2d');
@@ -238,14 +238,81 @@ test('new fighters default to a shirt even without a photo, and API saves carry 
   const f = await fixture(); t.after(() => f.dom.window.close());
   f.eval('addNewFighter()');
   assert.equal(f.document.getElementById('shirtBodyStyle').getAttribute('aria-pressed'), 'true');
-  let payload;
-  f.window.fetch = async (url, options) => { payload = JSON.parse(options.body); return { ok: true }; };
   f.eval('rosterApiAvailable = true;');
   await f.eval('saveFighter()');
+  assert.match(f.document.getElementById('fighterSaveStatus').textContent, /sign-in expired/i, 'online saves need a session');
+  f.window.fetch = async () => ({ ok: true, json: async () => ({ token: 't'.repeat(43), email: 'fan@example.com' }) });
+  await f.eval('Account.verify("fan@example.com", "123456")');
+  let payload, auth;
+  f.window.fetch = async (url, options) => { payload = JSON.parse(options.body); auth = options.headers.Authorization; return { ok: true, json: async () => ({ ok: true, visibility: 'private' }) }; };
+  f.eval('showManager(); editingFighterId = roster.at(-1).id; renderEditor();');
+  await f.eval('saveFighter()');
+  assert.equal(auth, 'Bearer ' + 't'.repeat(43));
   assert.equal(payload.bodyStyle, 'shirt');
   assert.equal(payload.imageData, null);
   assert.equal(payload.crop, null);
   f.window.fetch = async () => ({ ok: true, json: async () => [{ id: payload.id, name: 'Remote', body_style: 'shirt', crop: null, image_data: null }] });
   await f.eval('loadRoster()');
   assert.equal(f.eval('roster[0].bodyStyle'), 'shirt');
+});
+
+test('with the API online the manager asks for a sign-in code, then shows your fighters apart from public ones', async t => {
+  const f = await fixture(); t.after(() => f.dom.window.close());
+  const requests = [];
+  const rows = [
+    { id: 'pub', name: 'Champ', image_data: null, crop: null, body_style: 'classic', visibility: 'public', mine: false },
+    { id: 'me', name: 'Me', image_data: f.window.testFighter.imageData, crop: { sx: 10, sy: 10, sw: 80, sh: 120 }, body_style: 'shirt', visibility: 'private', mine: true }
+  ];
+  f.window.fetch = async (url, options = {}) => {
+    const body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ url, body, auth: options.headers?.Authorization });
+    const reply = (status, data) => ({ ok: status < 300, status, json: async () => data });
+    if (url === '/api/auth' && body.action === 'request-code') return body.email.includes('@') ? reply(200, { ok: true }) : reply(400, { error: 'Enter a valid email address.' });
+    if (url === '/api/auth' && body.action === 'verify') return body.code === '123456' ? reply(200, { token: 't'.repeat(43), email: body.email }) : reply(401, { error: 'That code is wrong or has expired. Request a new one.' });
+    if (url === '/api/fighters' && !options.method) return reply(200, rows);
+    if (url === '/api/fighters') return reply(200, { ok: true, visibility: 'private' });
+    if (url === '/api/publish') return reply(200, { ok: true, visibility: body.action === 'request' ? 'pending' : 'private' });
+    return reply(404, {});
+  };
+  f.eval('rosterApiAvailable = true; roster = []; editingFighterId = null;');
+  f.eval('openManager()');
+  assert.equal(f.document.getElementById('signinPanel').classList.contains('hidden'), false, 'signed-out players see the sign-in card');
+  assert.equal(f.document.getElementById('managerContent').classList.contains('hidden'), true);
+
+  f.document.getElementById('signinEmail').value = 'fan@example.com';
+  f.document.getElementById('signinEmailForm').dispatchEvent(new f.window.Event('submit', { cancelable: true }));
+  await tick();
+  assert.match(f.document.getElementById('signinStatus').textContent, /Check fan@example.com for a 6-digit code/);
+  assert.equal(f.document.getElementById('signinCodeForm').classList.contains('hidden'), false);
+
+  f.document.getElementById('signinCode').value = '999999';
+  f.document.getElementById('signinCodeForm').dispatchEvent(new f.window.Event('submit', { cancelable: true }));
+  await tick();
+  assert.match(f.document.getElementById('signinStatus').textContent, /wrong or has expired/);
+
+  f.document.getElementById('signinCode').value = '123456';
+  f.document.getElementById('signinCodeForm').dispatchEvent(new f.window.Event('submit', { cancelable: true }));
+  await tick(); await tick();
+  assert.equal(f.document.getElementById('managerContent').classList.contains('hidden'), false);
+  assert.equal(f.eval('Account.email'), 'fan@example.com');
+  assert.equal(requests.find(r => r.url === '/api/fighters').auth, 'Bearer ' + 't'.repeat(43), 'the roster is fetched with the session');
+  assert.match(f.document.getElementById('accountBar').textContent, /Signed in as fan@example.com/);
+  assert.equal(f.document.querySelectorAll('#rosterList .roster-item').length, 1);
+  assert.equal(f.document.querySelectorAll('#publicList .roster-item').length, 1);
+  assert.equal(f.document.querySelector('#publicList .roster-delete'), null, 'public fighters cannot be deleted by players');
+
+  f.document.querySelector('#rosterList .roster-item').click();
+  await tick();
+  const publishButton = f.document.getElementById('publishButton');
+  assert.equal(publishButton.textContent, 'Publish to everyone');
+  publishButton.click();
+  await tick(); await tick();
+  assert.deepEqual(requests.at(-1).body, { id: 'me', action: 'request' });
+  assert.equal(requests.at(-1).auth, 'Bearer ' + 't'.repeat(43));
+  assert.match(f.document.getElementById('fighterSaveStatus').textContent, /Sent for approval/);
+  assert.equal(f.document.getElementById('publishButton').textContent, 'Withdraw');
+  assert.match(f.document.querySelector('#rosterList .roster-badge').textContent, /Waiting for approval/);
+
+  f.eval('editingFighterId = "pub"; renderEditor();');
+  assert.match(f.document.getElementById('editorPanel').textContent, /Only its owner can change it/);
 });
