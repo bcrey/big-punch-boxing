@@ -15,7 +15,7 @@
 <div id="narrowWarning">
   <div class="warn-icon">&#9889;</div>
   <h2>A little more room for the ring.</h2>
-  <p>Widen your browser to at least 920px to play. Two fighters need a little elbow room.</p>
+  <p>Widen your browser to at least 560px to play. Two fighters need a little elbow room.</p>
 </div>
 <div id="gameShell">
   <div id="stageToolbar">
@@ -93,17 +93,40 @@
     <div class="menu-actions">
       <button id="startBtn">FIGHT!</button>
       <button id="onlineBtn" onclick="showLobby()">ONLINE</button>
-      <button class="manage-button" onclick="openManager()">Manage fighters</button>
+      <button class="manage-button" onclick="openManager()">Add your own fighter</button>
     </div>
   </div>
 
   <div id="managerOverlay" class="hidden">
     <h2>FIGHTER ROSTER</h2>
-    <div class="manager-content">
+    <div class="account-bar" id="accountBar"></div>
+    <div class="signin-panel hidden" id="signinPanel">
+      <div class="signin-card">
+        <div class="signin-kicker">STEP INTO THE RING</div>
+        <h3>Sign in to add your own fighters</h3>
+        <p>Enter your email and we'll send you a 6-digit code. Your fighters stay private to you unless you publish them, and published fighters are checked before everyone sees them.</p>
+        <form id="signinEmailForm">
+          <label for="signinEmail">Email</label>
+          <input type="email" id="signinEmail" autocomplete="email" required placeholder="you@example.com">
+          <button type="submit" class="admin-btn admin-btn-primary" id="signinSend">Send code</button>
+        </form>
+        <form id="signinCodeForm" class="hidden">
+          <label for="signinCode">Code</label>
+          <input type="text" id="signinCode" class="signin-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+          <button type="submit" class="admin-btn admin-btn-primary" id="signinVerify">Sign in</button>
+          <button type="button" class="admin-btn admin-btn-back" id="signinBack">Different email</button>
+        </form>
+        <div class="signin-status" id="signinStatus" role="status" aria-live="polite"></div>
+        <button type="button" class="signin-close" onclick="closeManager()">Back to the game</button>
+      </div>
+    </div>
+    <div class="manager-content" id="managerContent">
       <div class="roster-panel">
-        <h3>Fighters</h3>
+        <h3 id="rosterHeading">Your fighters</h3>
         <div id="rosterList"></div>
         <div class="add-fighter-btn" onclick="addNewFighter()">+ Add Fighter</div>
+        <h3 class="roster-public-heading hidden" id="publicHeading">Everyone's fighters</h3>
+        <div id="publicList"></div>
       </div>
       <div class="editor-panel empty-state" id="editorPanel">
         Select a fighter to edit
@@ -128,6 +151,10 @@
       <div class="admin-error" id="adminPinError"></div>
     </div>
     <div id="adminPanel" class="hidden" style="width:100%">
+      <h2>PENDING APPROVAL</h2>
+      <div class="deleted-list" id="pendingFightersList"></div>
+      <h2>PUBLIC ROSTER</h2>
+      <div class="deleted-list" id="publicFightersList"></div>
       <h2>RECYCLE BIN</h2>
       <div class="deleted-list" id="deletedFightersList"></div>
       <button class="admin-btn admin-btn-back" onclick="closeAdmin()">Done</button>
@@ -166,6 +193,7 @@
 <script src="face-outline-editor.js"></script>
 <script src="camera-capture.js"></script>
 <script src="fighter-storage.js"></script>
+<script src="account.js"></script>
 <script src="paper-punch.js"></script>
 <script src="arcade-effects.js"></script>
 <script>
@@ -182,6 +210,18 @@ function updateEffectsPreference() {
   button.textContent = 'Arcade FX: ' + (!arcadeEnabled ? 'Off' : motionPreference.matches ? 'Low motion' : 'On');
   button.setAttribute('aria-pressed', String(arcadeEnabled));
 }
+// The stage is laid out at 900px and scaled to fill the window, keeping its proportions.
+function fitShell() {
+  const shell = document.getElementById('gameShell');
+  const width = shell.offsetWidth || 900, height = shell.offsetHeight || 656;
+  const scale = Math.max(.3, Math.min((innerWidth - 24) / width, (innerHeight - 24) / height));
+  shell.style.transform = `scale(${scale})`;
+  shell.style.left = Math.max(12, (innerWidth - width * scale) / 2) + 'px';
+  shell.style.top = Math.max(12, (innerHeight - height * scale) / 2) + 'px';
+}
+addEventListener('resize', fitShell);
+fitShell();
+
 document.getElementById('effectsToggle').onclick = () => {
   arcadeEnabled = !arcadeEnabled;
   try { localStorage.setItem('bamBamArcadeEffects', String(arcadeEnabled)); } catch (_) {}
@@ -529,6 +569,7 @@ let cropOvalPct = 70;   // oval width as % of crop area width
 let cropDragging = false;
 let cropDragStart = { x: 0, y: 0 };
 let cropPanStart = { x: 0, y: 0 };
+let cropDragScale = 1; // the stage is CSS-scaled to the window; pointer deltas arrive in screen pixels
 let cropMode = 'oval';
 let outlineEditor = null;
 let cropEditorVersion = 0;
@@ -536,7 +577,7 @@ let rosterApiAvailable = true;
 
 async function loadRoster() {
   try {
-    const res = await fetch('/api/fighters', { signal: AbortSignal.timeout(5000) });
+    const res = await fetch('/api/fighters', { headers: Account.headers(), signal: AbortSignal.timeout(5000) });
     if (res.ok) {
       const rows = await res.json();
       roster = rows.map(r => ({
@@ -544,13 +585,16 @@ async function loadRoster() {
         name: r.name,
         imageData: r.image_data,
         crop: r.crop,
-        bodyStyle: normalizeBodyStyle(r.body_style)
+        bodyStyle: normalizeBodyStyle(r.body_style),
+        visibility: r.visibility || 'public',
+        mine: r.mine !== false
       }));
       await FighterStorage.write(roster);
       rosterApiAvailable = true;
       return;
     }
-    rosterApiAvailable = ![404, 405, 501].includes(res.status);
+    // Not deployed (404/405/501) or down (5xx): play from this device without asking anyone to sign in.
+    rosterApiAvailable = res.status < 500 && ![404, 405].includes(res.status);
   } catch(e) {
     // The preview also works without a database connection.
   }
@@ -562,14 +606,18 @@ async function saveRoster() {
   // No-op: individual saves happen via saveFighterToDb
 }
 
+// Without the API every fighter is local, so everything is editable; online, only your own fighters are.
+const isMine = fighter => !rosterApiAvailable || fighter.mine !== false;
+
 async function saveFighterToDb(fighter) {
   const localSaved = await FighterStorage.write(roster);
   if (!rosterApiAvailable) return { localSaved, remoteSaved: false };
+  if (!Account.signedIn) return { localSaved, remoteSaved: false, signedOut: true };
   try {
     const response = await fetch('/api/fighters', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(5000),
+      headers: { 'Content-Type': 'application/json', ...Account.headers() },
+      signal: AbortSignal.timeout(15000),
       body: JSON.stringify({
         id: fighter.id,
         name: fighter.name,
@@ -578,17 +626,35 @@ async function saveFighterToDb(fighter) {
         bodyStyle: normalizeBodyStyle(fighter.bodyStyle)
       })
     });
-    return { localSaved, remoteSaved: response.ok };
+    if (response.status === 401) { Account.forget(); return { localSaved, remoteSaved: false, signedOut: true }; }
+    const data = response.ok ? await response.json().catch(() => ({})) : {};
+    if (data.visibility) fighter.visibility = data.visibility;
+    return { localSaved, remoteSaved: response.ok, visibility: data.visibility };
   } catch(e) {
     return { localSaved, remoteSaved: false };
   }
+}
+
+async function publishFighter(fighter, action) {
+  const response = await fetch('/api/publish', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...Account.headers() },
+    signal: AbortSignal.timeout(15000),
+    body: JSON.stringify({ id: fighter.id, action })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) { Account.forget(); throw new Error('Your sign-in expired. Sign in again.'); }
+  if (!response.ok) throw new Error(data.error || 'Could not update the fighter.');
+  fighter.visibility = data.visibility;
+  await FighterStorage.write(roster);
+  return data.visibility;
 }
 
 async function deleteFighterFromDb(id) {
   await FighterStorage.write(roster);
   if (!rosterApiAvailable) return;
   try {
-    await fetch('/api/fighters/' + encodeURIComponent(id), { method: 'DELETE' });
+    await fetch('/api/fighters/' + encodeURIComponent(id), { method: 'DELETE', headers: Account.headers() });
   } catch(e) {
     console.error('Failed to delete fighter from DB:', e);
   }
@@ -748,9 +814,88 @@ function renderFighterSelects() {
 function openManager() {
   document.getElementById('managerOverlay').classList.remove('hidden');
   editingFighterId = null;
+  if (rosterApiAvailable && !Account.signedIn) return showSignIn();
+  showManager();
+}
+
+function showManager() {
+  document.getElementById('signinPanel').classList.add('hidden');
+  document.getElementById('managerContent').classList.remove('hidden');
+  renderAccountBar();
   renderRosterList();
   renderEditor();
 }
+
+function showSignIn(message = '') {
+  cropEditorVersion++;
+  cameraSession?.close();
+  outlineEditor?.unmount();
+  document.getElementById('managerContent').classList.add('hidden');
+  document.getElementById('signinPanel').classList.remove('hidden');
+  document.getElementById('signinEmailForm').classList.remove('hidden');
+  document.getElementById('signinCodeForm').classList.add('hidden');
+  document.getElementById('signinStatus').textContent = message;
+  renderAccountBar();
+  document.getElementById('signinEmail').focus();
+}
+
+function renderAccountBar() {
+  const bar = document.getElementById('accountBar');
+  bar.innerHTML = '';
+  if (!rosterApiAvailable || !Account.signedIn) return;
+  const who = document.createElement('span');
+  who.textContent = 'Signed in as ' + Account.email;
+  const out = document.createElement('button');
+  out.type = 'button';
+  out.textContent = 'Sign out';
+  out.onclick = async () => {
+    await Account.signOut();
+    await loadRoster();
+    renderFighterSelects();
+    showSignIn('Signed out.');
+  };
+  bar.append(who, out);
+}
+
+document.getElementById('signinEmailForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('signinEmail').value.trim();
+  const status = document.getElementById('signinStatus');
+  const button = document.getElementById('signinSend');
+  button.disabled = true;
+  status.textContent = 'Sending your code…';
+  try {
+    await Account.requestCode(email);
+    document.getElementById('signinEmailForm').classList.add('hidden');
+    document.getElementById('signinCodeForm').classList.remove('hidden');
+    document.getElementById('signinCode').value = '';
+    document.getElementById('signinCode').focus();
+    status.textContent = 'Check ' + email + ' for a 6-digit code. It expires in 10 minutes.';
+  } catch (error) {
+    status.textContent = error.message;
+  }
+  button.disabled = false;
+});
+
+document.getElementById('signinCodeForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const status = document.getElementById('signinStatus');
+  const button = document.getElementById('signinVerify');
+  button.disabled = true;
+  status.textContent = 'Checking…';
+  try {
+    await Account.verify(document.getElementById('signinEmail').value.trim(), document.getElementById('signinCode').value);
+    status.textContent = '';
+    await loadRoster();
+    renderFighterSelects();
+    showManager();
+  } catch (error) {
+    status.textContent = error.message;
+  }
+  button.disabled = false;
+});
+
+document.getElementById('signinBack').addEventListener('click', () => showSignIn());
 
 function closeManager() {
   cropEditorVersion++;
@@ -761,54 +906,87 @@ function closeManager() {
   initPreviewBoxers();
 }
 
+const VISIBILITY_LABELS = { private: 'Private', pending: 'Waiting for approval', public: 'Public', rejected: 'Not approved' };
+
+function rosterThumb(f, className) {
+  const thumbDiv = document.createElement('div');
+  thumbDiv.className = className;
+  thumbDiv.classList.toggle('custom-cutout', FaceCrop.isOutline(f.crop));
+  if (f.imageData) {
+    const thumbH = 48;
+    const ratio = (f.crop && f.crop.ovalRatio) ? f.crop.ovalRatio : (40/48);
+    const thumbW = Math.round(thumbH * ratio);
+    const c = document.createElement('canvas');
+    c.width = thumbW; c.height = thumbH;
+    const tc = c.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      FaceCrop.draw(tc, img, f.crop, 0, 0, thumbW, thumbH);
+    };
+    img.src = f.imageData;
+    c.style.width = '100%';
+    c.style.height = '100%';
+    thumbDiv.style.width = thumbW + 'px';
+    thumbDiv.appendChild(c);
+  }
+  return thumbDiv;
+}
+
 function renderRosterList() {
   const list = document.getElementById('rosterList');
+  const publicList = document.getElementById('publicList');
   list.innerHTML = '';
-  roster.forEach(f => {
+  publicList.innerHTML = '';
+  const mine = roster.filter(isMine);
+  const others = roster.filter(f => !isMine(f));
+  document.getElementById('rosterHeading').textContent = others.length || Account.signedIn ? 'Your fighters' : 'Fighters';
+  document.getElementById('publicHeading').classList.toggle('hidden', others.length === 0);
+  if (!mine.length) {
+    const empty = document.createElement('div');
+    empty.className = 'roster-empty';
+    empty.textContent = 'No fighters of your own yet.';
+    list.appendChild(empty);
+  }
+  mine.forEach(f => {
     const item = document.createElement('div');
     item.className = 'roster-item' + (f.id === editingFighterId ? ' selected' : '');
-
-    // Thumbnail using crop data
-    const thumbDiv = document.createElement('div');
-    thumbDiv.className = 'roster-thumb';
-    thumbDiv.classList.toggle('custom-cutout', FaceCrop.isOutline(f.crop));
-    if (f.imageData) {
-      const thumbH = 48;
-      const ratio = (f.crop && f.crop.ovalRatio) ? f.crop.ovalRatio : (40/48);
-      const thumbW = Math.round(thumbH * ratio);
-      const c = document.createElement('canvas');
-      c.width = thumbW; c.height = thumbH;
-      const tc = c.getContext('2d');
-      const img = new Image();
-      img.onload = () => {
-        FaceCrop.draw(tc, img, f.crop, 0, 0, thumbW, thumbH);
-      };
-      img.src = f.imageData;
-      c.style.width = '100%';
-      c.style.height = '100%';
-      thumbDiv.style.width = thumbW + 'px';
-      thumbDiv.appendChild(c);
-    }
 
     const nameDiv = document.createElement('div');
     nameDiv.className = 'roster-name';
     nameDiv.textContent = f.name;
+    if (rosterApiAvailable && f.visibility && f.visibility !== 'private') {
+      const badge = document.createElement('span');
+      badge.className = 'roster-badge ' + f.visibility;
+      badge.textContent = VISIBILITY_LABELS[f.visibility] || f.visibility;
+      nameDiv.appendChild(badge);
+    }
 
     const delDiv = document.createElement('div');
     delDiv.className = 'roster-delete';
     delDiv.innerHTML = '&times;';
     delDiv.onclick = (e) => { e.stopPropagation(); deleteFighter(f.id); };
 
-    item.appendChild(thumbDiv);
+    item.appendChild(rosterThumb(f, 'roster-thumb'));
     item.appendChild(nameDiv);
     item.appendChild(delDiv);
     item.onclick = () => { editingFighterId = f.id; renderRosterList(); renderEditor(); };
     list.appendChild(item);
   });
+  others.forEach(f => {
+    const item = document.createElement('div');
+    item.className = 'roster-item public';
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'roster-name';
+    nameDiv.textContent = f.name;
+    item.appendChild(rosterThumb(f, 'roster-thumb'));
+    item.appendChild(nameDiv);
+    item.title = 'In the public roster. Only its owner can change it.';
+    publicList.appendChild(item);
+  });
 }
 
 function addNewFighter() {
-  const fighter = { id: genId(), name: 'New Fighter', imageData: null, crop: null, bodyStyle: 'shirt' };
+  const fighter = { id: genId(), name: 'New Fighter', imageData: null, crop: null, bodyStyle: 'shirt', visibility: 'private', mine: true };
   roster.push(fighter);
   saveFighterToDb(fighter);
   editingFighterId = fighter.id;
@@ -841,14 +1019,17 @@ function renderEditor() {
     panel.innerHTML = 'Select a fighter to edit';
     return;
   }
+  if (!isMine(fighter)) {
+    panel.className = 'editor-panel empty-state';
+    panel.textContent = fighter.name + ' is in the public roster. Only its owner can change it.';
+    return;
+  }
   panel.className = 'editor-panel';
 
   panel.innerHTML = `
     <div class="editor-row">
       <label for="editorName">Name</label>
       <input type="text" id="editorName" placeholder="Fighter name">
-    </div>
-    <div class="editor-row outfit-row">
       <span id="outfitLabel">Outfit</span>
       <div class="outfit-switch" role="group" aria-labelledby="outfitLabel">
         <button type="button" id="shirtBodyStyle" aria-pressed="false">Boxing shirt</button>
@@ -870,10 +1051,10 @@ function renderEditor() {
       <div class="cutout-preview-panel">
         <span class="cutout-label">YOUR CUTOUT</span>
         <canvas id="cutoutPreview" width="280" height="300" aria-label="Live preview of your saved head cutout"></canvas>
-        <p id="cropInstructions">Drag the photo to position it. Adjust zoom and width below.</p>
+        <p id="cropInstructions">Drag the photo to position it. Adjust zoom and width on the right.</p>
         <p id="outlineStatus" role="status" aria-live="polite"></p>
       </div>
-    </div>
+      <div class="crop-tools">
     <div class="crop-controls" id="ovalCropControls">
       <label for="cropZoomSlider">Zoom</label>
       <input type="range" id="cropZoomSlider" min="50" max="300" value="100">
@@ -897,15 +1078,19 @@ function renderEditor() {
         <button type="button" id="resetOutline">Reset</button>
       </div>
     </div>
+      </div>
+    </div>
     <div class="editor-actions">
       <button type="button" class="btn-upload" onclick="document.getElementById('managerUpload').click()">Upload photo</button>
       <button type="button" class="btn-upload" id="takePhotoButton">Take photo</button>
+      <div class="publish-row hidden" id="publishRow"></div>
       <button type="button" class="btn-save" id="saveFighterButton" onclick="saveFighter()">Save fighter</button>
-      <span id="fighterSaveStatus" role="status" aria-live="polite"></span>
     </div>
+    <p id="fighterSaveStatus" role="status" aria-live="polite"></p>
   `;
 
   document.getElementById('editorName').value = fighter.name;
+  renderPublishRow(fighter);
   const setBodyStyle = value => {
     const style = normalizeBodyStyle(value);
     panel.dataset.bodyStyle = style;
@@ -1039,7 +1224,7 @@ function setCropMode(mode) {
   document.getElementById('outlineCropControls').classList.toggle('hidden', !custom);
   document.getElementById('cropInstructions').textContent = custom
     ? 'Drag dots to trim. Double-click an edge to add a dot. Arrow keys fine tune; Delete removes a dot. Drag the photo to pan.'
-    : 'Drag the photo to position it. Adjust zoom and width below.';
+    : 'Drag the photo to position it. Adjust zoom and width on the right.';
   document.getElementById('outlineStatus').textContent = custom && !cropImg ? 'Upload a photo to outline the head, including hair.' : '';
   document.querySelectorAll('#outlineCropControls button, #ovalCropControls input').forEach(control => control.disabled = !cropImg);
   if (!cropImg) return;
@@ -1110,6 +1295,7 @@ function setupCropDrag() {
   area.onpointerdown = (e) => {
     if (e.button !== 0) return;
     cropDragging = true;
+    cropDragScale = area.getBoundingClientRect().width / area.clientWidth || 1;
     cropDragStart = { x: e.clientX, y: e.clientY };
     cropPanStart = { x: cropX, y: cropY };
     area.setPointerCapture(e.pointerId);
@@ -1117,8 +1303,8 @@ function setupCropDrag() {
   };
   area.onpointermove = (e) => {
     if (!cropDragging) return;
-    cropX = cropPanStart.x + (e.clientX - cropDragStart.x);
-    cropY = cropPanStart.y + (e.clientY - cropDragStart.y);
+    cropX = cropPanStart.x + (e.clientX - cropDragStart.x) / cropDragScale;
+    cropY = cropPanStart.y + (e.clientY - cropDragStart.y) / cropDragScale;
     drawCropPreview();
   };
   area.onpointerup = area.onpointercancel = (e) => {
@@ -1172,6 +1358,50 @@ function computeCropFromEditor() {
   return outline ? { ...oval, ...outline } : null;
 }
 
+const PUBLISH_COPY = {
+  private: { text: 'Private. Only you can pick this fighter.', button: 'Publish to everyone', action: 'request' },
+  pending: { text: 'Waiting for approval. Brian has been asked to review it.', button: 'Withdraw', action: 'withdraw' },
+  public: { text: 'Public. Everyone can pick this fighter.', button: 'Make private', action: 'withdraw' },
+  rejected: { text: 'Not approved for the public roster. Change it and ask again if you like.', button: 'Ask again', action: 'request' }
+};
+
+function renderPublishRow(fighter) {
+  const row = document.getElementById('publishRow');
+  if (!row) return;
+  row.innerHTML = '';
+  if (!rosterApiAvailable || !Account.signedIn) return row.classList.add('hidden');
+  const copy = PUBLISH_COPY[fighter.visibility] || PUBLISH_COPY.private;
+  row.classList.remove('hidden');
+  const badge = document.createElement('span');
+  badge.className = 'roster-badge ' + (fighter.visibility || 'private');
+  badge.textContent = VISIBILITY_LABELS[fighter.visibility] || 'Private';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.id = 'publishButton';
+  button.textContent = copy.button;
+  button.title = copy.text;
+  badge.title = copy.text;
+  button.onclick = async () => {
+    const status = document.getElementById('fighterSaveStatus');
+    if (copy.action === 'request' && !(fighter.imageData || cropImgData)) { status.textContent = 'Add a photo before publishing.'; return; }
+    button.disabled = true;
+    const version = cropEditorVersion;
+    try {
+      if (copy.action === 'request') await saveFighter();
+      const visibility = await publishFighter(fighter, copy.action);
+      if (version !== cropEditorVersion) return;
+      status.textContent = visibility === 'pending' ? 'Sent for approval. You will get an email when it is reviewed.'
+        : visibility === 'private' ? 'This fighter is private again.' : '';
+    } catch (error) {
+      if (version !== cropEditorVersion) return;
+      status.textContent = error.message;
+    }
+    renderPublishRow(fighter);
+    renderRosterList();
+  };
+  row.append(badge, button);
+}
+
 async function saveFighter() {
   if (document.getElementById('cropArea')?.dataset.loading === 'true' || (cropMode !== 'oval' && outlineEditor?.busy)) return;
   outlineEditor?.finishMorph();
@@ -1185,6 +1415,7 @@ async function saveFighter() {
     fighter.crop = computeCropFromEditor();
   }
   const version = cropEditorVersion;
+  const wasPublic = fighter.visibility === 'public';
   const button = document.getElementById('saveFighterButton');
   const status = document.getElementById('fighterSaveStatus');
   button.disabled = true;
@@ -1192,9 +1423,14 @@ async function saveFighter() {
   const result = await saveFighterToDb(fighter);
   if (version === cropEditorVersion) {
     button.disabled = false;
-    status.textContent = result.remoteSaved ? 'Saved.' : result.localSaved ? 'Saved on this device.' : 'Could not save. Keep this tab open and try again.';
+    status.textContent = result.remoteSaved
+      ? (wasPublic && result.visibility === 'pending' ? 'Saved. Since this fighter was public, it goes back for approval.' : 'Saved.')
+      : result.signedOut ? 'Your sign-in expired. Sign in again to save online.'
+      : result.localSaved ? 'Saved on this device.' : 'Could not save. Keep this tab open and try again.';
+    renderPublishRow(fighter);
   }
   renderRosterList();
+  if (result.signedOut && rosterApiAvailable) showSignIn('Your sign-in expired. Enter your email to get a new code.');
 
   // Update active game faces if this fighter is selected
   await Promise.all([
@@ -2749,7 +2985,7 @@ function openAdmin() {
   if (adminAuthenticated) {
     document.getElementById('adminPinScreen').classList.add('hidden');
     document.getElementById('adminPanel').classList.remove('hidden');
-    loadDeletedFighters();
+    loadAdminLists();
   } else {
     document.getElementById('adminPinScreen').classList.remove('hidden');
     document.getElementById('adminPanel').classList.add('hidden');
@@ -2783,66 +3019,59 @@ async function verifyAdminPin() {
     document.getElementById('adminPinScreen').classList.add('hidden');
     document.getElementById('adminPanel').classList.remove('hidden');
 
-    const deleted = await res.json();
-    renderDeletedFighters(deleted);
+    renderDeletedFighters(await res.json());
+    loadAdminLists();
   } catch (e) {
     document.getElementById('adminPinError').textContent = 'Error: ' + e.message;
   }
 }
 
-async function loadDeletedFighters() {
+async function adminList(action) {
   const pin = document.getElementById('adminPinInput').value;
+  const res = await fetch('/api/admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin, action })
+  });
+  if (res.status === 403) { adminAuthenticated = false; openAdmin(); return null; }
+  if (!res.ok) throw new Error('Server error');
+  return res.json();
+}
+
+async function loadAdminLists() {
   try {
-    const res = await fetch('/api/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin, action: 'list-deleted' })
-    });
-    if (!res.ok) { adminAuthenticated = false; openAdmin(); return; }
-    const deleted = await res.json();
+    const [pending, published, deleted] = await Promise.all([adminList('list-pending'), adminList('list-public'), adminList('list-deleted')]);
+    if (!pending || !published || !deleted) return;
+    renderAdminList('pendingFightersList', pending, 'No fighters waiting for approval', f => ({
+      detail: (f.owner_email || 'unknown') + ' · asked ' + new Date(f.submitted_at).toLocaleDateString(),
+      actions: [['Approve', 'admin-btn-primary', () => adminAction('approve', f.id)], ['Reject', 'admin-btn-danger', () => adminAction('reject', f.id)]]
+    }));
+    renderAdminList('publicFightersList', published, 'No public fighters', f => ({
+      detail: f.owner_email ? 'by ' + f.owner_email : 'built in',
+      actions: [['Make private', 'admin-btn-back', () => adminAction('unpublish', f.id)],
+        ['Remove', 'admin-btn-danger', () => { if (confirm('Remove "' + f.name + '" from the roster? It goes to the recycle bin.')) adminAction('delete', f.id); }]]
+    }));
     renderDeletedFighters(deleted);
   } catch (e) {
-    console.error('Failed to load deleted fighters:', e);
+    console.error('Failed to load admin lists:', e);
   }
 }
 
-function renderDeletedFighters(fighters) {
-  const list = document.getElementById('deletedFightersList');
+function renderAdminList(listId, fighters, emptyText, describe) {
+  const list = document.getElementById(listId);
+  list.innerHTML = '';
   if (!fighters || fighters.length === 0) {
-    list.innerHTML = '<div class="admin-empty">No deleted fighters</div>';
+    const empty = document.createElement('div');
+    empty.className = 'admin-empty';
+    empty.textContent = emptyText;
+    list.appendChild(empty);
     return;
   }
-
-  list.innerHTML = '';
   fighters.forEach(f => {
+    const { detail, actions } = describe(f);
     const item = document.createElement('div');
     item.className = 'deleted-item';
-
-    // Thumbnail
-    const thumbDiv = document.createElement('div');
-    thumbDiv.className = 'deleted-item-thumb';
-    thumbDiv.classList.toggle('custom-cutout', FaceCrop.isOutline(f.crop));
-    if (f.image_data) {
-      const thumbH = 48;
-      const crop = f.crop;
-      const ratio = (crop && crop.ovalRatio) ? crop.ovalRatio : (40 / 48);
-      const thumbW = Math.round(thumbH * ratio);
-      const c = document.createElement('canvas');
-      c.width = thumbW; c.height = thumbH;
-      const tc = c.getContext('2d');
-      const img = new Image();
-      img.onload = () => {
-        FaceCrop.draw(tc, img, crop, 0, 0, thumbW, thumbH);
-      };
-      img.src = f.image_data;
-      c.style.width = '100%';
-      c.style.height = '100%';
-      c.style.opacity = '0.5';
-      thumbDiv.style.width = thumbW + 'px';
-      thumbDiv.appendChild(c);
-    }
-
-    // Info
+    item.appendChild(rosterThumb({ imageData: f.image_data, crop: f.crop }, 'deleted-item-thumb'));
     const infoDiv = document.createElement('div');
     infoDiv.className = 'deleted-item-info';
     const nameDiv = document.createElement('div');
@@ -2850,36 +3079,28 @@ function renderDeletedFighters(fighters) {
     nameDiv.textContent = f.name;
     const dateDiv = document.createElement('div');
     dateDiv.className = 'deleted-item-date';
-    dateDiv.textContent = 'Deleted ' + new Date(f.deleted_at).toLocaleDateString();
-    infoDiv.appendChild(nameDiv);
-    infoDiv.appendChild(dateDiv);
-
-    // Actions
+    dateDiv.textContent = detail;
+    infoDiv.append(nameDiv, dateDiv);
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'deleted-item-actions';
-
-    const restoreBtn = document.createElement('button');
-    restoreBtn.className = 'admin-btn admin-btn-primary';
-    restoreBtn.textContent = 'Restore';
-    restoreBtn.onclick = () => adminAction('restore', f.id);
-
-    const permDeleteBtn = document.createElement('button');
-    permDeleteBtn.className = 'admin-btn admin-btn-danger';
-    permDeleteBtn.textContent = 'Delete Forever';
-    permDeleteBtn.onclick = () => {
-      if (confirm('Permanently delete "' + f.name + '"? This cannot be undone.')) {
-        adminAction('permanent-delete', f.id);
-      }
-    };
-
-    actionsDiv.appendChild(restoreBtn);
-    actionsDiv.appendChild(permDeleteBtn);
-
-    item.appendChild(thumbDiv);
-    item.appendChild(infoDiv);
-    item.appendChild(actionsDiv);
+    actions.forEach(([label, className, onclick]) => {
+      const button = document.createElement('button');
+      button.className = 'admin-btn ' + className;
+      button.textContent = label;
+      button.onclick = onclick;
+      actionsDiv.appendChild(button);
+    });
+    item.append(infoDiv, actionsDiv);
     list.appendChild(item);
   });
+}
+
+function renderDeletedFighters(fighters) {
+  renderAdminList('deletedFightersList', fighters, 'No deleted fighters', f => ({
+    detail: 'Deleted ' + new Date(f.deleted_at).toLocaleDateString(),
+    actions: [['Restore', 'admin-btn-primary', () => adminAction('restore', f.id)],
+      ['Delete Forever', 'admin-btn-danger', () => { if (confirm('Permanently delete "' + f.name + '"? This cannot be undone.')) adminAction('permanent-delete', f.id); }]]
+  }));
 }
 
 async function adminAction(action, id) {
@@ -2891,14 +3112,11 @@ async function adminAction(action, id) {
       body: JSON.stringify({ pin, action, id })
     });
     if (!res.ok) throw new Error('Failed');
-    // Refresh the list
-    loadDeletedFighters();
-    // If restoring, also refresh the main roster
-    if (action === 'restore') {
-      await loadRoster();
-      renderRosterList();
-      renderFighterSelects();
-    }
+    loadAdminLists();
+    // Anything approved, hidden or restored changes the roster everyone sees
+    await loadRoster();
+    renderFighterSelects();
+    if (!document.getElementById('managerContent').classList.contains('hidden')) renderRosterList();
   } catch (e) {
     console.error('Admin action failed:', e);
   }

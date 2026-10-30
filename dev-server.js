@@ -9,6 +9,9 @@ const fighterByIdHandler = require('./api/fighters/[id]');
 const adminHandler = require('./api/admin');
 const healthHandler = require('./api/health');
 const aiCropHandler = require('./api/ai-crop');
+const authHandler = require('./api/auth');
+const publishHandler = require('./api/publish');
+const reviewHandler = require('./api/review');
 
 const MIME = {
   '.html': 'text/html',
@@ -26,6 +29,7 @@ const MIME = {
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
   const pathname = parsed.pathname;
+  req.query = parsed.query;
 
   // Collect body for POST/PUT
   if (req.method === 'POST' || req.method === 'PUT') {
@@ -49,6 +53,15 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/ai-crop') {
     return aiCropHandler(req, res);
   }
+  if (pathname === '/api/auth') {
+    return authHandler(req, res);
+  }
+  if (pathname === '/api/publish') {
+    return publishHandler(req, res);
+  }
+  if (pathname === '/api/review') {
+    return reviewHandler(req, res);
+  }
   if (pathname === '/api/admin') {
     return adminHandler(req, res);
   }
@@ -57,7 +70,7 @@ const server = http.createServer(async (req, res) => {
   }
   const idMatch = pathname.match(/^\/api\/fighters\/(.+)$/);
   if (idMatch) {
-    req.query = { id: decodeURIComponent(idMatch[1]) };
+    req.query = { ...parsed.query, id: decodeURIComponent(idMatch[1]) };
     return fighterByIdHandler(req, res);
   }
 

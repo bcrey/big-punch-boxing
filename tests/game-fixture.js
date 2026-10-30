@@ -39,7 +39,7 @@ async function gameFixture() {
     }
     return canvas.getContext('2d');
   };
-  for (const file of ['face-crop.js', 'head-outline.js', 'face-outline-editor.js', 'camera-capture.js', 'fighter-storage.js', 'paper-punch.js', 'arcade-effects.js']) {
+  for (const file of ['face-crop.js', 'head-outline.js', 'face-outline-editor.js', 'camera-capture.js', 'fighter-storage.js', 'account.js', 'paper-punch.js', 'arcade-effects.js']) {
     run(fs.readFileSync(path.join(root, file), 'utf8'));
   }
   for (const script of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) run(script[1]);
