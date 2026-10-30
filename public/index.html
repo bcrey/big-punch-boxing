@@ -113,6 +113,7 @@
     </div>
     <span class="admin-link" onclick="openAdmin()">admin</span>
     <input type="file" id="managerUpload" accept="image/*">
+    <input type="file" id="managerCamera" accept="image/*" capture="user">
   </div>
 
   <div id="adminOverlay" class="hidden">
@@ -162,6 +163,7 @@
 <script src="face-crop.js"></script>
 <script src="head-outline.js"></script>
 <script src="face-outline-editor.js"></script>
+<script src="camera-capture.js"></script>
 <script src="fighter-storage.js"></script>
 <script src="paper-punch.js"></script>
 <script>
@@ -496,6 +498,7 @@ let editingFighterId = null;
 
 // Crop editor state
 let cropImg = null;       // Image element being cropped
+let cameraSession = null; // open CameraCapture viewfinder, if any
 let cropImgData = null;   // dataURL of uploaded image
 let cropX = 0, cropY = 0; // pan offset
 let cropZoom = 1;
@@ -721,6 +724,7 @@ function openManager() {
 
 function closeManager() {
   cropEditorVersion++;
+  cameraSession?.close();
   outlineEditor?.unmount();
   document.getElementById('managerOverlay').classList.add('hidden');
   renderFighterSelects();
@@ -795,6 +799,7 @@ function deleteFighter(id) {
 
 function renderEditor() {
   const version = ++cropEditorVersion;
+  cameraSession?.close();
   outlineEditor?.unmount();
   outlineEditor = null;
   cropImg = null;
@@ -819,8 +824,10 @@ function renderEditor() {
       <button type="button" id="aiCropMode" aria-pressed="false">AI cropping</button>
     </div>
     <div class="crop-workspace">
-      <div class="crop-area" id="cropArea" aria-label="Photo crop editor">
-        <span class="crop-placeholder">${fighter.imageData ? 'Loading photo…' : 'Upload a photo to start'}</span>
+      <div class="crop-stage" id="cropStage">
+        <div class="crop-area" id="cropArea" aria-label="Photo crop editor">
+          <span class="crop-placeholder">${fighter.imageData ? 'Loading photo…' : 'Upload or take a photo to start'}</span>
+        </div>
       </div>
       <div class="cutout-preview-panel">
         <span class="cutout-label">YOUR CUTOUT</span>
@@ -854,6 +861,7 @@ function renderEditor() {
     </div>
     <div class="editor-actions">
       <button type="button" class="btn-upload" onclick="document.getElementById('managerUpload').click()">Upload photo</button>
+      <button type="button" class="btn-upload" id="takePhotoButton">Take photo</button>
       <button type="button" class="btn-save" id="saveFighterButton" onclick="saveFighter()">Save fighter</button>
       <span id="fighterSaveStatus" role="status" aria-live="polite"></span>
     </div>
@@ -931,9 +939,25 @@ function renderEditor() {
   }
 
   if (fighter.imageData) loadEditorImage(fighter.imageData, fighter.crop);
-  document.getElementById('managerUpload').onchange = (e) => {
+  document.getElementById('takePhotoButton').onclick = async () => {
+    // Without a secure context (plain-http test links) getUserMedia is unavailable; phones still open the camera app.
+    if (!CameraCapture.supported()) return document.getElementById('managerCamera').click();
+    if (cameraSession) return;
+    const status = document.getElementById('fighterSaveStatus');
+    status.textContent = '';
+    outlineEditor?.cancelDetection();
+    cameraSession = CameraCapture.open(document.getElementById('cropStage'), { onError: message => status.textContent = message });
+    const data = await cameraSession.done;
+    cameraSession = null;
+    if (data && version === cropEditorVersion) {
+      ++imageRequest;
+      loadEditorImage(data, null);
+    }
+  };
+  document.getElementById('managerUpload').onchange = document.getElementById('managerCamera').onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    cameraSession?.close();
     const request = ++imageRequest;
     outlineEditor?.cancelDetection();
     document.getElementById('cropArea').dataset.loading = 'true';
