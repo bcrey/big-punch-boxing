@@ -3,6 +3,9 @@ const { ensureFighterTable } = require('../lib/fighter-schema');
 const auth = require('../lib/auth');
 const email = require('../lib/email');
 
+// Vercel puts the caller's address first in x-forwarded-for.
+const clientIp = req => String(req.headers?.['x-forwarded-for'] || req.headers?.['x-real-ip'] || '').split(',')[0].trim() || null;
+
 module.exports = async function handler(req, res) {
   const p = getPool();
   try {
@@ -21,8 +24,9 @@ module.exports = async function handler(req, res) {
     if (action === 'request-code') {
       if (!auth.validEmail(address)) return res.status(400).json({ error: 'Enter a valid email address.' });
       if (!email.configured()) return res.status(503).json({ error: 'Sign-in email is not set up on the server yet.' });
-      const code = await auth.issueCode(p, address);
-      if (!code) return res.status(429).json({ error: 'Too many codes requested. Check your inbox, or try again in 15 minutes.' });
+      const { code, error } = await auth.issueCode(p, address, clientIp(req));
+      if (error === 'cooldown') return res.status(429).json({ error: 'A code was sent less than a minute ago. Check your inbox and spam folder.' });
+      if (error) return res.status(429).json({ error: 'Too many codes requested. Check your inbox, or try again in 15 minutes.' });
       try {
         await email.loginCode(address, code);
       } catch (error) {
