@@ -31,14 +31,14 @@ test.beforeEach(() => {
   pool.calls.length = 0;
   pool.rules.length = 0;
   sent.length = 0;
-  pool.answer(/COUNT\(\*\)/, [{ count: 0 }]);
+  pool.answer(/COUNT\(\*\) FILTER/, [{ for_email: 0, last_for_email: null, for_ip: 0, total: 0 }]);
 });
 
 test('sign in emails a 6-digit code, limits guesses and returns a session token', async () => {
   const bad = await call(auth, 'POST', { action: 'request-code', email: 'not-an-email' });
   assert.equal(bad.statusCode, 400);
 
-  const requested = await call(auth, 'POST', { action: 'request-code', email: ' Fan@Example.com ' });
+  const requested = await call(auth, 'POST', { action: 'request-code', email: ' Fan@Example.com ' }, { headers: { 'x-forwarded-for': '203.0.113.9, 10.0.0.1' } });
   assert.equal(requested.statusCode, 200);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].to[0], 'fan@example.com');
@@ -47,6 +47,9 @@ test('sign in emails a 6-digit code, limits guesses and returns a session token'
   const insert = pool.last(/INSERT INTO login_codes/);
   assert.equal(insert.values[1], sha256(`fan@example.com:${code}`), 'codes are stored hashed');
   assert.ok(!insert.values.includes(code));
+  assert.equal(insert.values[2], '203.0.113.9', 'the requesting IP is recorded for rate limits');
+  assert.match(pool.last(/DELETE FROM login_codes WHERE created_at/).sql, /interval '1 hour'/, 'old codes are kept for an hour so the limits count them');
+  assert.equal(pool.last(/DELETE FROM login_codes WHERE email/), undefined, 'issuing a code no longer erases the count of earlier ones');
 
   const stored = { id: 7, code_hash: insert.values[1], attempts: 0 };
   pool.answer(/FROM login_codes WHERE email/, () => [stored]);
@@ -72,10 +75,22 @@ test('sign in emails a 6-digit code, limits guesses and returns a session token'
   assert.deepEqual(me.data, { email: 'fan@example.com' });
   assert.equal((await call(auth, 'GET')).statusCode, 401);
 
-  pool.answer(/COUNT\(\*\)/, [{ count: 5 }]);
-  const tooMany = await call(auth, 'POST', { action: 'request-code', email: 'fan@example.com' });
-  assert.equal(tooMany.statusCode, 429);
-  assert.equal(sent.length, 1);
+  const usage = { for_email: 0, last_for_email: null, for_ip: 0, total: 0 };
+  pool.answer(/COUNT\(\*\) FILTER/, () => [{ ...usage }]);
+  const request = () => call(auth, 'POST', { action: 'request-code', email: 'fan@example.com' });
+  usage.last_for_email = new Date(Date.now() - 20_000);
+  const tooSoon = await request();
+  assert.equal(tooSoon.statusCode, 429);
+  assert.match(tooSoon.data.error, /less than a minute/);
+  usage.last_for_email = new Date(Date.now() - 90_000);
+  assert.equal((await request()).statusCode, 200, 'a minute later a new code goes out');
+  usage.for_email = 5;
+  assert.equal((await request()).statusCode, 429, 'five codes per email per window');
+  usage.for_email = 0; usage.for_ip = 12;
+  assert.equal((await request()).statusCode, 429, 'twelve codes per IP per hour');
+  usage.for_ip = 0; usage.total = 60;
+  assert.equal((await request()).statusCode, 429, 'sixty codes sitewide per hour');
+  assert.equal(sent.length, 2);
 });
 
 test('publishing alerts the admin with a review link, and the link approves or rejects once', async () => {

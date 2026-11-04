@@ -31,9 +31,10 @@ test('roster API adds outfit and account columns to older databases and returns 
   assert.match(pool.calls[1].sql, /ADD COLUMN IF NOT EXISTS body_style TEXT NOT NULL DEFAULT 'classic'/);
   assert.match(pool.calls[1].sql, /ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public'/);
   assert.match(pool.calls[2].sql, /CREATE TABLE IF NOT EXISTS login_codes/);
-  assert.match(pool.calls[3].sql, /CREATE TABLE IF NOT EXISTS sessions/);
-  assert.match(pool.calls[4].sql, /ALTER TABLE fighters ENABLE ROW LEVEL SECURITY/);
-  assert.match(pool.calls[4].sql, /ALTER TABLE sessions ENABLE ROW LEVEL SECURITY/);
+  assert.match(pool.calls[3].sql, /ALTER TABLE login_codes ADD COLUMN IF NOT EXISTS ip TEXT/);
+  assert.match(pool.calls[4].sql, /CREATE TABLE IF NOT EXISTS sessions/);
+  assert.match(pool.calls[5].sql, /ALTER TABLE fighters ENABLE ROW LEVEL SECURITY/);
+  assert.match(pool.calls[5].sql, /ALTER TABLE sessions ENABLE ROW LEVEL SECURITY/);
   assert.match(pool.last(/SELECT id, name/).sql, /visibility = 'public' OR owner_email = \$1/);
   assert.equal(pool.last(/SELECT id, name/).values[0], null, 'anonymous readers only get public fighters');
 
@@ -43,7 +44,7 @@ test('roster API adds outfit and account columns to older databases and returns 
   await call(fighters, 'POST', { id: 'one', name: 'Older client' }, 'owner');
   assert.equal(pool.last(/INSERT INTO fighters/).values[4], null);
   assert.match(pool.last(/INSERT INTO fighters/).sql, /body_style = COALESCE\(\$5, fighters.body_style\)/, 'older clients preserve the saved outfit');
-  assert.equal(pool.calls.filter(c => c.sql.includes('ADD COLUMN')).length, 1, 'the migration runs once per pool');
+  assert.equal(pool.calls.filter(c => c.sql.includes('ADD COLUMN IF NOT EXISTS body_style')).length, 1, 'the migration runs once per pool');
 
   const single = await call(fighterById, 'PUT', { name: 'Classic', bodyStyle: 'classic' }, 'owner');
   assert.equal(single.statusCode, 200);
