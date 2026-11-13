@@ -169,9 +169,11 @@
       <div style="margin-top:10px"><button class="lobby-btn lobby-back" onclick="hideLobby()">BACK</button></div>
     </div>
     <div id="lobbyCreating" class="hidden" style="text-align:center">
-      <div style="color:#fff;font-size:18px;font-family:Arial,sans-serif;margin-bottom:15px">Share this code with your opponent:</div>
+      <div style="color:#fff;font-size:18px;font-family:Arial,sans-serif;margin-bottom:15px">Send this link to your opponent:</div>
       <div id="roomCodeDisplay" onclick="copyRoomCode()" style="font-size:64px;color:#ffd700;letter-spacing:12px;margin-bottom:8px;text-shadow:2px 2px 4px rgba(0,0,0,0.8);cursor:pointer;transition:transform 0.1s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">-----</div>
-      <div id="roomCodeCopied" style="color:#2ecc71;font-size:13px;font-family:Arial,sans-serif;min-height:18px;margin-bottom:10px"></div>
+      <div id="inviteLinkText" style="color:#cfd8e3;font-size:14px;font-family:Arial,sans-serif;margin-bottom:12px;user-select:all;-webkit-user-select:all;word-break:break-all"></div>
+      <div><button id="copyInviteBtn" class="lobby-btn" onclick="copyRoomCode()">CLICK TO COPY LINK</button></div>
+      <div id="roomCodeCopied" style="color:#2ecc71;font-size:13px;font-family:Arial,sans-serif;min-height:18px;margin:6px 0 10px"></div>
       <div id="lobbyWaiting" style="color:#aaa;font-size:16px;font-family:Arial,sans-serif;margin-bottom:15px">Waiting for opponent...</div>
       <button class="lobby-btn lobby-back" onclick="hideLobby()">CANCEL</button>
     </div>
@@ -1511,6 +1513,7 @@ loadRoster().then(() => seedDefaults()).then(() => {
       startBtn.style.pointerEvents = 'none';
       startBtn.style.opacity = '0.8';
       dismissLoading();
+      joinFromInviteLink();
     };
 
     // Prepare the music object so the START gesture can play it reliably.
@@ -2643,6 +2646,7 @@ function generateRoomCode() {
 function createRoom() {
   const roomCode = generateRoomCode();
   document.getElementById('roomCodeDisplay').textContent = roomCode;
+  document.getElementById('inviteLinkText').textContent = inviteLink(roomCode).replace(/^https?:\/\//, '');
   document.getElementById('lobbyCreating').classList.remove('hidden');
   document.getElementById('lobbyButtons').classList.add('hidden');
 
@@ -2960,14 +2964,41 @@ function showJoinInput() {
   document.getElementById('roomCodeInput').focus();
 }
 
+// The invite link opens the game and joins this room, so the opponent never types the code.
+function inviteLink(code) {
+  return location.origin + location.pathname + '?join=' + encodeURIComponent(code);
+}
+
 function copyRoomCode() {
   const code = document.getElementById('roomCodeDisplay').textContent;
   if (!code || code === '-----') return;
-  navigator.clipboard.writeText(code).then(() => {
-    const el = document.getElementById('roomCodeCopied');
-    el.textContent = 'Copied!';
-    setTimeout(() => { el.textContent = ''; }, 1500);
-  }).catch(() => {});
+  const el = document.getElementById('roomCodeCopied');
+  const button = document.getElementById('copyInviteBtn');
+  const show = (text, label) => {
+    el.textContent = text;
+    button.textContent = label;
+    clearTimeout(copyRoomCode.timer);
+    copyRoomCode.timer = setTimeout(() => { el.textContent = ''; button.textContent = 'CLICK TO COPY LINK'; }, 2000);
+  };
+  const failed = () => show('Could not copy. Select the link above and copy it.', 'CLICK TO COPY LINK');
+  if (!navigator.clipboard) return failed();
+  navigator.clipboard.writeText(inviteLink(code)).then(() => show('Link copied. Paste it to your opponent.', 'COPIED!'), failed);
+}
+
+// Opened from an invite link (?join=CODE): go straight into that room.
+function inviteCodeFromUrl() {
+  const code = (new URLSearchParams(location.search).get('join') || '').trim().toUpperCase();
+  return /^[A-Z0-9]{4,5}$/.test(code) ? code : null;
+}
+
+function joinFromInviteLink() {
+  const code = inviteCodeFromUrl();
+  if (!code) return false;
+  history.replaceState(null, '', location.pathname);   // a refresh should not rejoin a finished room
+  showLobby();
+  document.getElementById('roomCodeInput').value = code;
+  joinRoom();
+  return true;
 }
 
 // Enter key in room code input
