@@ -7,6 +7,17 @@
 <title>Bam Bam Boxing!</title>
 <meta name="theme-color" content="#142638">
 <meta name="description" content="Big heads. Bigger hits. Pick your fighters and step into a cut-paper boxing ring with friends.">
+<script>
+// Google Analytics, on the live site only so previews and local servers never count as traffic.
+window.dataLayer = window.dataLayer || [];
+function gtag(){ dataLayer.push(arguments); }
+function track(event, params) { gtag('event', event, params || {}); }
+if (location.hostname === 'box.bcr.co') {
+  var gaScript = document.createElement('script'); gaScript.async = true;
+  gaScript.src = 'https://www.googletagmanager.com/gtag/js?id=G-MRV2Z0B3NW'; document.head.appendChild(gaScript);
+  gtag('js', new Date()); gtag('config', 'G-MRV2Z0B3NW');
+}
+</script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <link rel="stylesheet" href="paper-punch.css">
 <link rel="preload" href="assets/paper-arena.png" as="image">
@@ -631,6 +642,7 @@ async function saveFighterToDb(fighter) {
     if (response.status === 401) { Account.forget(); return { localSaved, remoteSaved: false, signedOut: true }; }
     const data = response.ok ? await response.json().catch(() => ({})) : {};
     if (data.visibility) fighter.visibility = data.visibility;
+    if (response.ok && typeof track === 'function') track('fighter_saved');
     return { localSaved, remoteSaved: response.ok, visibility: data.visibility };
   } catch(e) {
     return { localSaved, remoteSaved: false };
@@ -2112,6 +2124,7 @@ function updateUI() {
 // Countdown sequence
 async function startCountdown() {
   countdownActive = true;
+  if (round === 1) track('fight_start', { mode: netMode === 'local' ? 'local' : 'online' });
   playSound('bell');
   showBigText('ROUND ' + round, 60);
   await wait(1200);
@@ -2702,6 +2715,7 @@ function joinRoom() {
 function setupDataConnection() {
   dataConnection.on('open', () => {
     onlineConnected = true;
+    track('online_connected', { role: isHost ? 'host' : 'guest' });
     localReady = false;
     remoteReady = false;
     netMode = 'online';
