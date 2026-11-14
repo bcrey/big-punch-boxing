@@ -46,6 +46,7 @@ test('hosting shows a copy button that copies a link, and opening that link join
 test('analytics loads only on the live site and counts fights', async t => {
   const f = await gameFixture(); t.after(() => f.dom.window.close());
   assert.equal(f.window.document.querySelector('script[src*="googletagmanager"]'), null, 'no tag off box.bcr.co');
+  assert.equal(f.window.document.querySelector('script[src*="clarity.ms"]'), null, 'no Clarity off box.bcr.co');
   f.eval('dataLayer.length = 0; round = 1; startCountdown(); round = 2; startCountdown();');
   const events = f.eval('dataLayer.map(a => [a[0], a[1], a[2] && a[2].mode].join(":"))');
   assert.deepEqual([...events], ['event:fight_start:local'], 'one event per fight, not per round');
